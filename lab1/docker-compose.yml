@@ -1,0 +1,23 @@
+services:
+  manager:
+    build:
+      context: ./manager
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - hash-cracker-network
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    # deploy:
+    #   replicas: 3
+    networks:
+      - hash-cracker-network
+
+
+networks:
+  hash-cracker-network:
+    driver: bridge
