@@ -84,7 +84,6 @@ func (ts *TaskStorage) SetPartCount(hash string, count int) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	log.Printf("[TaskStorage] Setting part count for hash %s: %d parts", hash, count)
 	if _, exists := ts.partCounts[hash]; !exists {
 		ts.partCounts[hash] = count
 		ts.partResults[hash] = make(map[int]string)
@@ -95,36 +94,35 @@ func (ts *TaskStorage) AddPartResult(hash string, partNumber int, result string)
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	log.Printf("[TaskStorage] Adding result for hash %s part %d: %s",
-		hash, partNumber, result)
+	log.Printf("[TaskStorage] Adding result for hash %s(%d/%d) part %d: %s",
+		hash, len(ts.partResults[hash]), ts.partCounts[hash], partNumber, result)
 
 	if _, exists := ts.partResults[hash]; !exists {
 		ts.partResults[hash] = make(map[int]string)
 	}
 	ts.partResults[hash][partNumber] = result
 
-	var successfulResults []string
-	for _, res := range ts.partResults[hash] {
-		if res != "" {
-			successfulResults = append(successfulResults, res)
+	if result != "" {
+		var successfulResults []string
+		for _, res := range ts.partResults[hash] {
+			if res != "" {
+				successfulResults = append(successfulResults, res)
+			}
+		}
+
+		if len(successfulResults) > 0 {
+			log.Printf("[TaskStorage] Hash %s cracked successfully. Found matches: %v",
+				hash, successfulResults)
+			ts.hashToStatus[hash] = StatusResponse{
+				Status: "DONE",
+				Data:   successfulResults,
+			}
+			return
 		}
 	}
-
-	if len(successfulResults) > 0 {
-		log.Printf("[TaskStorage] Hash %s cracked successfully. Found matches: %v",
-			hash, successfulResults)
-		ts.hashToStatus[hash] = StatusResponse{
-			Status: "DONE",
-			Data:   successfulResults,
-		}
-		return
-	}
-
-	log.Printf("[TaskStorage] Received %d/%d parts for hash %s",
-		len(ts.partResults[hash]), ts.partCounts[hash], hash)
 
 	// Проверяем завершение только если все части обработаны и нет успешных результатов
-	if len(ts.partResults[hash]) == ts.partCounts[hash] && len(successfulResults) == 0 {
+	if len(ts.partResults[hash]) == ts.partCounts[hash] && ts.hashToStatus[hash].Status != "DONE" {
 		log.Printf("[TaskStorage] Failed to crack hash %s", hash)
 		ts.hashToStatus[hash] = StatusResponse{
 			Status: "FAIL",

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"manager/balancer"
 	"manager/handlers"
 	"manager/store"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 func main() {
 	store.Init()
+	balancer.Init()
 
 	http.HandleFunc("/api/hash/crack", handlers.CrackHashHandler)
 	http.HandleFunc("/api/hash/status", handlers.StatusHandler)

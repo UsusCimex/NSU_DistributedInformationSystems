@@ -3,7 +3,9 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
+	"manager/balancer"
 	"manager/models"
 	"manager/store"
 	"net/http"
@@ -44,7 +46,6 @@ func CrackHashHandler(w http.ResponseWriter, r *http.Request) {
 				PartNumber: i,
 				PartCount:  partCount,
 			}
-			log.Printf("Sending part %d/%d for hash %s to worker", i, partCount, request.Hash)
 			go sendToWorker(task)
 		}
 	} else {
@@ -66,19 +67,22 @@ func sendToWorker(task models.CrackTaskRequest) {
 		return
 	}
 
-	log.Printf("Sending task to worker. Hash: %s, Part: %d/%d",
-		task.Hash, task.PartNumber, task.PartCount)
+	workerURL := fmt.Sprintf("%s/internal/api/worker/hash/crack/task", balancer.LoadBalancer.GetNextWorker())
+	log.Printf("Sending task to worker %s. Hash: %s, Part: %d/%d",
+		workerURL, task.Hash, task.PartNumber, task.PartCount)
 
 	resp, err := http.Post(workerURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("Failed to send task to worker. Hash: %s, Error: %v", task.Hash, err)
+		log.Printf("Failed to send task to worker %s. Hash: %s, Error: %v",
+			workerURL, task.Hash, err)
 		store.GlobalTaskStorage.UpdateStatus(task.Hash, "ERROR", []string{"Failed to send to worker"})
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Worker returned error status %d for hash %s", resp.StatusCode, task.Hash)
+		log.Printf("Worker %s returned error status %d for hash %s",
+			workerURL, resp.StatusCode, task.Hash)
 		store.GlobalTaskStorage.UpdateStatus(task.Hash, "ERROR", []string{"Worker returned error"})
 	}
 }
