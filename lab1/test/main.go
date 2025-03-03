@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type HashCrackRequest struct {
@@ -111,7 +112,9 @@ func main() {
 		}
 		fmt.Printf("Status: %s\n", status.Status)
 		if status.Status == "IN_PROGRESS" && len(status.Data) > 0 {
-			progress, _ := strconv.ParseFloat(status.Data[0], 64)
+			progressStr := status.Data[0]
+			progressStr = strings.Trim(progressStr, "[]%")
+			progress, _ := strconv.ParseFloat(progressStr, 64)
 			fmt.Printf("Progress: %.1f%%\n", progress)
 		}
 		if status.Status == "DONE" && len(status.Data) > 0 {

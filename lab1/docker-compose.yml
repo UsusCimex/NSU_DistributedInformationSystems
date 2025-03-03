@@ -1,36 +1,36 @@
 services:
   manager:
     build:
-      context: ./manager
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.manager
     ports:
       - "8080:8080"
     environment:
       - WORKER_URLS=http://worker1:8080,http://worker2:8080,http://worker3:8080
-    networks:
-      - hash-cracker-network
 
   worker1:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
-    networks:
-      - hash-cracker-network
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - MAX_WORKERS=15
+    depends_on:
+      - manager
 
   worker2:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
-    networks:
-      - hash-cracker-network
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - MAX_WORKERS=10
+    depends_on:
+      - manager
 
   worker3:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
-    networks:
-      - hash-cracker-network
-
-networks:
-  hash-cracker-network:
-    driver: bridge
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - MAX_WORKERS=5
+    depends_on:
+      - manager

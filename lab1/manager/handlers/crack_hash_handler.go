@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,11 +8,19 @@ import (
 	"manager/models"
 	"manager/store"
 	"net/http"
+	"time"
+
+	"common/utils"
 
 	"github.com/google/uuid"
 )
 
-const partCoefficient = 20
+const (
+	partCoefficient = 50
+	maxRetries      = 1_000_000
+	initialDelay    = 1 * time.Second
+	maxDelay        = 2 * time.Minute
+)
 
 func CrackHashHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -61,28 +68,25 @@ func CrackHashHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendToWorker(task models.CrackTaskRequest) {
-	jsonData, err := json.Marshal(task)
-	if err != nil {
-		log.Printf("Failed to marshal task for hash %s: %v", task.Hash, err)
-		return
+	req := utils.SendRequest{
+		URL: fmt.Sprintf("%s/internal/api/worker/hash/crack/task",
+			balancer.LoadBalancer.GetNextWorker()),
+		Payload: task,
 	}
 
-	workerURL := fmt.Sprintf("%s/internal/api/worker/hash/crack/task", balancer.LoadBalancer.GetNextWorker())
-	log.Printf("Sending task to worker %s. Hash: %s, Part: %d/%d",
-		workerURL, task.Hash, task.PartNumber, task.PartCount)
-
-	resp, err := http.Post(workerURL, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		log.Printf("Failed to send task to worker %s. Hash: %s, Error: %v",
-			workerURL, task.Hash, err)
-		store.GlobalTaskStorage.UpdateStatus(task.Hash, "ERROR", []string{"Failed to send to worker"})
-		return
+	cfg := utils.SendConfig{
+		MaxRetries:      maxRetries,
+		InitialDelay:    initialDelay,
+		MaxDelay:        maxDelay,
+		SuccessStatus:   http.StatusOK,
+		RetryOnStatuses: []int{http.StatusServiceUnavailable},
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Worker %s returned error status %d for hash %s",
-			workerURL, resp.StatusCode, task.Hash)
-		store.GlobalTaskStorage.UpdateStatus(task.Hash, "ERROR", []string{"Worker returned error"})
+	if err := utils.RetryingSend(req, cfg); err != nil {
+		log.Printf("Failed to send task for hash %s, part %d: %v",
+			task.Hash, task.PartNumber, err)
+		store.GlobalTaskStorage.UpdateStatus(task.Hash, "ERROR",
+			[]string{fmt.Sprintf("Failed to send part %d: %v",
+				task.PartNumber, err)})
 	}
 }

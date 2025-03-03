@@ -1,5 +1,10 @@
 module manager
 
-go 1.24.0
+go 1.21
 
-require github.com/google/uuid v1.6.0
+require (
+	common v0.0.0
+	github.com/google/uuid v1.6.0
+)
+
+replace common => ../common

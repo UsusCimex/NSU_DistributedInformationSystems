@@ -35,8 +35,8 @@ func (ts *TaskStorage) AddTask(requestId string, hash string) bool {
 
 	log.Printf("[TaskStorage] Adding new task. RequestID: %s, Hash: %s", requestId, hash)
 
+	ts.requestToHash[requestId] = hash
 	if status, exists := ts.hashToStatus[hash]; exists {
-		ts.requestToHash[requestId] = hash
 		if status.Status == "DONE" {
 			log.Printf("[TaskStorage] Hash %s already cracked, reusing result", hash)
 			return false
@@ -47,7 +47,6 @@ func (ts *TaskStorage) AddTask(requestId string, hash string) bool {
 		}
 	}
 
-	ts.requestToHash[requestId] = hash
 	ts.hashToStatus[hash] = StatusResponse{
 		Status: "IN_PROGRESS",
 		Data:   []string{"0%"},
@@ -120,9 +119,11 @@ func (ts *TaskStorage) AddPartResult(hash string, partNumber int, result string)
 		}
 	}
 
-	ts.hashToStatus[hash] = StatusResponse{
-		Status: "IN_PROGRESS",
-		Data:   []string{fmt.Sprintf("%.1f", progress) + "%"},
+	if ts.hashToStatus[hash].Status != "DONE" {
+		ts.hashToStatus[hash] = StatusResponse{
+			Status: "IN_PROGRESS",
+			Data:   []string{fmt.Sprintf("%.1f", progress) + "%"},
+		}
 	}
 
 	if len(ts.partResults[hash]) == ts.partCounts[hash] && ts.hashToStatus[hash].Status != "DONE" {

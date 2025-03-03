@@ -1,0 +1,16 @@
+FROM golang:1.21-alpine
+
+WORKDIR /app
+
+# Копируем общие пакеты
+COPY common/ /app/common/
+COPY manager/ /app/manager/
+
+WORKDIR /app/manager
+
+RUN go mod download
+RUN go build -o manager
+
+EXPOSE 8080
+
+CMD ["./manager"]

@@ -1,3 +1,7 @@
 module worker
 
-go 1.24.0
+go 1.21
+
+require common v0.0.0
+
+replace common => ../common
