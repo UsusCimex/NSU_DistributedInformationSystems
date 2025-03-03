@@ -110,12 +110,16 @@ func main() {
 			return
 		}
 		fmt.Printf("Status: %s\n", status.Status)
-		if len(status.Data) > 0 {
+		if status.Status == "IN_PROGRESS" && len(status.Data) > 0 {
+			progress, _ := strconv.ParseFloat(status.Data[0], 64)
+			fmt.Printf("Progress: %.1f%%\n", progress)
+		}
+		if status.Status == "DONE" && len(status.Data) > 0 {
 			fmt.Printf("Found %d results:\n", len(status.Data))
 			for i, result := range status.Data {
 				fmt.Printf("  %d. %s\n", i+1, result)
 			}
-		} else {
+		} else if status.Status == "FAIL" {
 			fmt.Println("No results found")
 		}
 	default:

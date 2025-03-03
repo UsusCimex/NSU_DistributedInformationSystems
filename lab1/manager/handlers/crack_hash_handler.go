@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const workerURL = "http://worker:8080/internal/api/worker/hash/crack/task"
+const partCoefficient = 20
 
 func CrackHashHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -35,7 +35,7 @@ func CrackHashHandler(w http.ResponseWriter, r *http.Request) {
 
 	needWorker := store.GlobalTaskStorage.AddTask(requestId, request.Hash)
 	if needWorker {
-		partCount := request.MaxLength * 2
+		partCount := request.MaxLength * partCoefficient
 		log.Printf("Starting new task distribution. Hash: %s, Parts: %d", request.Hash, partCount)
 		store.GlobalTaskStorage.SetPartCount(request.Hash, partCount)
 

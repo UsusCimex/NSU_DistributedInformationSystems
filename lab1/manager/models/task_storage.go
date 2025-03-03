@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"log"
 	"sync"
 )
@@ -49,6 +50,7 @@ func (ts *TaskStorage) AddTask(requestId string, hash string) bool {
 	ts.requestToHash[requestId] = hash
 	ts.hashToStatus[hash] = StatusResponse{
 		Status: "IN_PROGRESS",
+		Data:   []string{"0%"},
 	}
 	log.Printf("[TaskStorage] Started new task for hash %s", hash)
 	return true
@@ -94,13 +96,12 @@ func (ts *TaskStorage) AddPartResult(hash string, partNumber int, result string)
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	log.Printf("[TaskStorage] Adding result for hash %s(%d/%d) part %d: %s",
-		hash, len(ts.partResults[hash]), ts.partCounts[hash], partNumber, result)
-
 	if _, exists := ts.partResults[hash]; !exists {
 		ts.partResults[hash] = make(map[int]string)
 	}
 	ts.partResults[hash][partNumber] = result
+
+	progress := float64(len(ts.partResults[hash])) / float64(ts.partCounts[hash]) * 100
 
 	if result != "" {
 		var successfulResults []string
@@ -111,8 +112,6 @@ func (ts *TaskStorage) AddPartResult(hash string, partNumber int, result string)
 		}
 
 		if len(successfulResults) > 0 {
-			log.Printf("[TaskStorage] Hash %s cracked successfully. Found matches: %v",
-				hash, successfulResults)
 			ts.hashToStatus[hash] = StatusResponse{
 				Status: "DONE",
 				Data:   successfulResults,
@@ -121,9 +120,12 @@ func (ts *TaskStorage) AddPartResult(hash string, partNumber int, result string)
 		}
 	}
 
-	// Проверяем завершение только если все части обработаны и нет успешных результатов
+	ts.hashToStatus[hash] = StatusResponse{
+		Status: "IN_PROGRESS",
+		Data:   []string{fmt.Sprintf("%.1f", progress) + "%"},
+	}
+
 	if len(ts.partResults[hash]) == ts.partCounts[hash] && ts.hashToStatus[hash].Status != "DONE" {
-		log.Printf("[TaskStorage] Failed to crack hash %s", hash)
 		ts.hashToStatus[hash] = StatusResponse{
 			Status: "FAIL",
 			Data:   []string{},
