@@ -11,8 +11,7 @@ import (
 
 type SendConfig struct {
 	MaxRetries      int
-	InitialDelay    time.Duration
-	MaxDelay        time.Duration
+	Delay           time.Duration
 	SuccessStatus   int
 	RetryOnStatuses []int
 }
@@ -49,18 +48,11 @@ func RetryingSend(req SendRequest, cfg SendConfig) error {
 	}
 
 	var lastErr error
-	currentDelay := cfg.InitialDelay
-
 	for attempt := 0; attempt < cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			log.Printf("Retrying request to %s. Attempt %d/%d. Waiting %.2f seconds",
-				req.URL, attempt+1, cfg.MaxRetries, currentDelay.Seconds())
-			time.Sleep(currentDelay)
-
-			currentDelay = time.Duration(float64(currentDelay) * 2)
-			if currentDelay > cfg.MaxDelay {
-				currentDelay = cfg.MaxDelay
-			}
+			log.Printf("Retrying request to %s. Attempt %d/%d",
+				req.URL, attempt+1, cfg.MaxRetries)
+			time.Sleep(cfg.Delay)
 		}
 
 		resp, err := http.Post(req.URL, "application/json", bytes.NewBuffer(jsonData))

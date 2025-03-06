@@ -11,11 +11,9 @@ import (
 )
 
 const (
-	managerURL = "http://manager:8080/internal/api/manager/hash/crack/request"
-
-	maxRetries   = 10
-	initialDelay = 1 * time.Second
-	maxDelay     = 5 * time.Minute
+	managerURL = "http://manager:8080/internal/api/manager/hash/crack/result"
+	maxRetries = 5
+	retryDelay = time.Second
 )
 
 var md5Cracker = cracker.NewMD5Cracker()
@@ -54,7 +52,7 @@ func CreateCrackTaskHandler(workerPool chan struct{}) http.HandlerFunc {
 						Hash:       task.Hash,
 						Result:     "",
 						PartNumber: task.PartNumber,
-					})
+					}, r.Host)
 					return
 				}
 
@@ -65,7 +63,7 @@ func CreateCrackTaskHandler(workerPool chan struct{}) http.HandlerFunc {
 					Hash:       task.Hash,
 					Result:     result,
 					PartNumber: task.PartNumber,
-				})
+				}, r.Host)
 			}()
 
 			w.WriteHeader(http.StatusOK)
@@ -78,7 +76,7 @@ func CreateCrackTaskHandler(workerPool chan struct{}) http.HandlerFunc {
 	}
 }
 
-func sendResult(result models.CrackTaskResult) {
+func sendResult(result models.CrackTaskResult, workerURL string) {
 	req := utils.SendRequest{
 		URL:     managerURL,
 		Payload: result,
@@ -86,8 +84,7 @@ func sendResult(result models.CrackTaskResult) {
 
 	cfg := utils.SendConfig{
 		MaxRetries:    maxRetries,
-		InitialDelay:  initialDelay,
-		MaxDelay:      maxDelay,
+		Delay:         retryDelay,
 		SuccessStatus: http.StatusOK,
 	}
 
