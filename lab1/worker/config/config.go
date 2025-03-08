@@ -8,11 +8,17 @@ import (
 
 type Config struct {
 	MaxWorkers int
+	WorkerURL  string
+	ManagerURL string
+	Port       string
 }
 
-const defaultMaxWorkers = 10
+const (
+	defaultMaxWorkers = 10
+	defaultPort       = "8080"
+)
 
-func Load() Config {
+func Load() *Config {
 	maxWorkers := defaultMaxWorkers
 	if val := os.Getenv("MAX_WORKERS"); val != "" {
 		if parsed, err := strconv.Atoi(val); err == nil {
@@ -24,7 +30,20 @@ func Load() Config {
 		log.Printf("Info: MAX_WORKERS not set, using default: %d", defaultMaxWorkers)
 	}
 
-	return Config{
+	workerURL := os.Getenv("WORKER_URL")
+	managerURL := os.Getenv("MANAGER_URL")
+	if managerURL == "" {
+		managerURL = "http://manager:8080"
+	}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = defaultPort
+	}
+
+	return &Config{
 		MaxWorkers: maxWorkers,
+		WorkerURL:  workerURL,
+		ManagerURL: managerURL,
+		Port:       port,
 	}
 }
