@@ -1,16 +1,26 @@
-FROM golang:1.21-alpine
-
+# Этап сборки
+FROM golang:1.21-alpine AS builder
 WORKDIR /app
 
-# Копируем общие пакеты
-COPY common/ /app/common/
-COPY manager/ /app/manager/
+# Копируем общий код и код менеджера
+COPY common/ ./common/
+COPY manager/ ./manager/
 
+# Переходим в каталог менеджера
 WORKDIR /app/manager
 
+# Загружаем зависимости
 RUN go mod download
-RUN go build -o manager
+
+# Собираем бинарник, указывая точку входа
+RUN go build -o manager ./cmd/manager/main.go
+
+# Финальный образ
+FROM alpine:latest
+WORKDIR /app
+
+# Копируем собранный бинарник из этапа сборки
+COPY --from=builder /app/manager/manager .
 
 EXPOSE 8080
-
 CMD ["./manager"]

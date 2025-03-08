@@ -13,9 +13,9 @@ type HashCrackStatus struct {
 
 type TaskStorage struct {
 	requestToHash map[string]string         // requestId -> hash
-	hashToStatus  map[string]StatusResponse // hash -> status
-	partResults   map[string]map[int]string // hash -> (partNumber -> result)
-	partCounts    map[string]int            // hash -> expected number of parts
+	hashToStatus  map[string]StatusResponse // hash -> task status
+	partResults   map[string]map[int]string // hash -> (part number -> result)
+	partCounts    map[string]int            // hash -> expected parts count
 	mu            sync.RWMutex
 }
 
@@ -28,21 +28,21 @@ func NewTaskStorage() *TaskStorage {
 	}
 }
 
-// Возвращает true, если хэш добавлен впервые и его надо крякнуть
+// AddTask returns true if hash is added for the first time and needs to be cracked
 func (ts *TaskStorage) AddTask(requestId string, hash string) bool {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
 	log.Printf("[TaskStorage] Adding new task. RequestID: %s, Hash: %s", requestId, hash)
-
 	ts.requestToHash[requestId] = hash
+
 	if status, exists := ts.hashToStatus[hash]; exists {
 		if status.Status == "DONE" {
-			log.Printf("[TaskStorage] Hash %s already cracked, reusing result", hash)
+			log.Printf("[TaskStorage] Hash %s already processed, returning result", hash)
 			return false
 		}
 		if status.Status == "IN_PROGRESS" {
-			log.Printf("[TaskStorage] Hash %s is already being processed, adding request to queue", hash)
+			log.Printf("[TaskStorage] Hash %s already in progress", hash)
 			return false
 		}
 	}
@@ -51,7 +51,7 @@ func (ts *TaskStorage) AddTask(requestId string, hash string) bool {
 		Status: "IN_PROGRESS",
 		Data:   []string{"0%"},
 	}
-	log.Printf("[TaskStorage] Started new task for hash %s", hash)
+	log.Printf("[TaskStorage] Started processing for hash %s", hash)
 	return true
 }
 
@@ -109,7 +109,6 @@ func (ts *TaskStorage) AddPartResult(hash string, partNumber int, result string)
 				successfulResults = append(successfulResults, res)
 			}
 		}
-
 		if len(successfulResults) > 0 {
 			ts.hashToStatus[hash] = StatusResponse{
 				Status: "DONE",
@@ -122,7 +121,7 @@ func (ts *TaskStorage) AddPartResult(hash string, partNumber int, result string)
 	if ts.hashToStatus[hash].Status != "DONE" {
 		ts.hashToStatus[hash] = StatusResponse{
 			Status: "IN_PROGRESS",
-			Data:   []string{fmt.Sprintf("%.1f", progress) + "%"},
+			Data:   []string{fmt.Sprintf("%.1f%%", progress)},
 		}
 	}
 

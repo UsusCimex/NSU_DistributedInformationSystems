@@ -3,14 +3,15 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# Копируем модули для кеширования зависимостей
-COPY worker/go.mod ./
-COPY common/go.mod ./
-RUN go mod download
-
-# Копируем исходный код (как worker, так и общие пакеты)
-COPY worker/ ./worker/
+# Копируем общий код и код воркера
 COPY common/ ./common/
+COPY worker/ ./worker/
+
+# Переходим в каталог воркера
+WORKDIR /app/worker
+
+# Загружаем зависимости
+RUN go mod download
 
 # Переходим в директорию с main.go
 WORKDIR /app/worker/cmd/worker

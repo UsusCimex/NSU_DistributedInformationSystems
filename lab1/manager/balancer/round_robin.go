@@ -14,7 +14,7 @@ type WorkerInfo struct {
 type RoundRobin struct {
 	workers     []*WorkerInfo
 	mu          sync.Mutex
-	workerReady chan struct{} // канал для оповещения о доступности воркеров
+	workerReady chan struct{} // Канал для сигнализации о доступных слотах
 }
 
 var LoadBalancer *RoundRobin
@@ -38,18 +38,18 @@ func (rb *RoundRobin) RegisterWorker(url string, maxWorkers int) {
 	})
 	log.Printf("Total registered workers: %d", len(rb.workers))
 
+	// Изначально все слоты считаются свободными
 	for i := 0; i < maxWorkers; i++ {
-		rb.workerReady <- struct{}{} // изначально все слоты свободны
+		rb.workerReady <- struct{}{}
 	}
 }
 
 func (rb *RoundRobin) GetNextWorker() *WorkerInfo {
-	<-rb.workerReady // ждем сигнал о доступном воркере
+	<-rb.workerReady // Ждём появления свободного слота
 
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 
-	// Find worker with minimum load
 	var selectedWorker *WorkerInfo
 	for _, worker := range rb.workers {
 		if worker.ActiveTasks < worker.MaxWorkers &&
@@ -60,8 +60,6 @@ func (rb *RoundRobin) GetNextWorker() *WorkerInfo {
 
 	if selectedWorker != nil {
 		selectedWorker.ActiveTasks++
-		log.Printf("Selected worker %s (active tasks: %d/%d)",
-			selectedWorker.URL, selectedWorker.ActiveTasks, selectedWorker.MaxWorkers)
 	}
 	return selectedWorker
 }
@@ -74,7 +72,7 @@ func (rb *RoundRobin) TaskCompleted(workerURL string) {
 		if worker.URL == workerURL {
 			if worker.ActiveTasks > 0 {
 				worker.ActiveTasks--
-				rb.workerReady <- struct{}{} // сигнализируем о освободившемся слоте
+				rb.workerReady <- struct{}{} // Сигнал о освобождении слота
 			}
 			break
 		}
