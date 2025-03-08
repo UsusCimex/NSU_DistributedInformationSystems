@@ -8,6 +8,7 @@ import (
 	"time"
 	"worker/cracker"
 	"worker/models"
+	"worker/pool"
 )
 
 const (
@@ -18,7 +19,7 @@ const (
 
 var md5Cracker = cracker.NewMD5Cracker()
 
-func CreateCrackTaskHandler(workerPool chan struct{}) http.HandlerFunc {
+func CreateCrackTaskHandler(workerPool *pool.WorkerPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			log.Printf("Invalid method %s for crack task", r.Method)
@@ -33,46 +34,42 @@ func CreateCrackTaskHandler(workerPool chan struct{}) http.HandlerFunc {
 			return
 		}
 
-		select {
-		case workerPool <- struct{}{}: // Пытаемся получить слот в пуле
-			log.Printf("Acquired worker slot. Processing task for hash %s (part %d/%d)",
-				task.Hash, task.PartNumber, task.PartCount)
-
-			go func() {
-				defer func() { <-workerPool }() // Освобождаем слот после завершения
-
-				log.Printf("Starting crack attempt for hash %s (part %d/%d)",
-					task.Hash, task.PartNumber, task.PartCount)
-
-				result, err := md5Cracker.Crack(task)
-				if err != nil {
-					log.Printf("Crack failed for hash %s (part %d/%d): %v",
-						task.Hash, task.PartNumber, task.PartCount, err)
-					sendResult(models.CrackTaskResult{
-						Hash:       task.Hash,
-						Result:     "",
-						PartNumber: task.PartNumber,
-					}, r.Host)
-					return
-				}
-
-				log.Printf("Found result for hash %s: %s (part %d/%d)",
-					task.Hash, result, task.PartNumber, task.PartCount)
-
-				sendResult(models.CrackTaskResult{
-					Hash:       task.Hash,
-					Result:     result,
-					PartNumber: task.PartNumber,
-				}, r.Host)
-			}()
-
-			w.WriteHeader(http.StatusOK)
-
-		default: // Если нет свободных слотов
+		if !workerPool.Acquire() {
 			log.Printf("No available workers for hash %s (part %d/%d)",
 				task.Hash, task.PartNumber, task.PartCount)
 			http.Error(w, "Server is busy", http.StatusServiceUnavailable)
+			return
 		}
+
+		go func() {
+			defer workerPool.Release()
+
+			log.Printf("Starting crack attempt for hash %s (part %d/%d)",
+				task.Hash, task.PartNumber, task.PartCount)
+
+			result, err := md5Cracker.Crack(task)
+			if err != nil {
+				log.Printf("Crack failed for hash %s (part %d/%d): %v",
+					task.Hash, task.PartNumber, task.PartCount, err)
+				sendResult(models.CrackTaskResult{
+					Hash:       task.Hash,
+					Result:     "",
+					PartNumber: task.PartNumber,
+				}, r.Host)
+				return
+			}
+
+			log.Printf("Found result for hash %s: %s (part %d/%d)",
+				task.Hash, result, task.PartNumber, task.PartCount)
+
+			sendResult(models.CrackTaskResult{
+				Hash:       task.Hash,
+				Result:     result,
+				PartNumber: task.PartNumber,
+			}, r.Host)
+		}()
+
+		w.WriteHeader(http.StatusOK)
 	}
 }
 

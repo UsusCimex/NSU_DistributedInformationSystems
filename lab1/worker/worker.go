@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"worker/config"
 	"worker/handlers"
+	"worker/pool"
 	"worker/registration"
 )
 
@@ -15,7 +16,7 @@ func main() {
 		log.Fatal("Failed to register with manager:", err)
 	}
 
-	workerPool := make(chan struct{}, cfg.MaxWorkers)
+	workerPool := pool.New(&cfg)
 	http.HandleFunc("/internal/api/worker/hash/crack/task", handlers.CreateCrackTaskHandler(workerPool))
 
 	log.Printf("Starting worker server on :8080 with %d max concurrent workers", cfg.MaxWorkers)
