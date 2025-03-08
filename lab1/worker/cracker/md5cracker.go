@@ -27,9 +27,7 @@ func (c *MD5Cracker) Crack(task models.CrackTaskRequest) (string, error) {
 	targetHash := strings.ToLower(task.Hash)
 	base := len(c.alphabet)
 
-	var processedCount int64 = 0
 	var totalCombinations int64 = 0
-	logThreshold := int64(10_000_000)
 
 	for l := 1; l <= task.MaxLength; l++ {
 		total := int64(math.Pow(float64(base), float64(l)))
@@ -46,23 +44,15 @@ func (c *MD5Cracker) Crack(task models.CrackTaskRequest) (string, error) {
 				continue
 			}
 
-			processedCount++
-			if processedCount%logThreshold == 0 {
-				progress := float64(processedCount) / float64(totalCombinations) * 100
-				log.Printf("Progress: %.2f%% (%d combinations checked)", progress, processedCount)
-			}
-
 			candidate := c.intToCandidate(i, length)
 			hashBytes := md5.Sum([]byte(candidate))
 			hashCandidate := hex.EncodeToString(hashBytes[:])
 			if hashCandidate == targetHash {
-				log.Printf("Solution found after checking %d combinations!", processedCount)
 				return candidate, nil
 			}
 		}
 	}
 
-	log.Printf("No solution found after checking %d combinations", processedCount)
 	return "", fmt.Errorf("solution not found")
 }
 
