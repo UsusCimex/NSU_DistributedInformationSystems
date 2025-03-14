@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.manager
     ports:
-      - "8080:8080"
+      - "${MANAGER_PORT}:${MANAGER_PORT}"
 
   worker1:
     build:
@@ -13,7 +13,7 @@ services:
     environment:
       - MAX_WORKERS=15
       - WORKER_URL=http://worker1:8080
-      - MANAGER_URL=http://manager:8080
+      - MANAGER_URL=${MANAGER_URL}
     depends_on:
       - manager
 
@@ -24,7 +24,7 @@ services:
     environment:
       - MAX_WORKERS=10
       - WORKER_URL=http://worker2:8080
-      - MANAGER_URL=http://manager:8080
+      - MANAGER_URL=${MANAGER_URL}
     depends_on:
       - manager
 
@@ -35,6 +35,6 @@ services:
     environment:
       - MAX_WORKERS=5
       - WORKER_URL=http://worker3:8080
-      - MANAGER_URL=http://manager:8080
+      - MANAGER_URL=${MANAGER_URL}
     depends_on:
       - manager
