@@ -1,0 +1,57 @@
+@startuml
+skinparam backgroundColor #F0F8FF
+skinparam shadowing true
+skinparam roundcorner 20
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+title Диаграмма
+
+' Менеджер
+package "Manager Service" <<Rectangle>> {
+  rectangle "HTTP Server\n(Обработка входящих запросов)" as M_Server #8EC0E4
+  rectangle "HTTP API\n(/api/hash/crack, /api/hash/status)" as M_API #8EC0E4
+  rectangle "Task Dispatcher\n(Распределение задач)" as M_Dispatcher #8EC0E4
+  rectangle "Task Queue\n(Хранение задач)" as M_Queue #8EC0E4
+  rectangle "Load Balancer\n(Распределение нагрузки)" as M_Balancer #8EC0E4
+  rectangle "Task Storage\n(Статусы задач)" as M_Storage #8EC0E4
+  rectangle "Worker Registration\nHandler" as M_Reg #8EC0E4
+}
+
+' Воркер
+package "Worker Service" <<Rectangle>> {
+  rectangle "HTTP Server\n(Приём заданий)" as W_Server #F7B05B
+  rectangle "HTTP API\n(/internal/api/worker/hash/crack/task)" as W_API #F7B05B
+  rectangle "Worker Pool\n(Ограничение параллельности)" as W_Pool #F7B05B
+  rectangle "MD5 Cracker\n(Алгоритм перебора)" as W_Cracker #F7B05B
+  rectangle "Registration Module\n(Регистрация в менеджере)" as W_Reg #F7B05B
+}
+
+' Общая библиотека
+package "Common Library" <<Rectangle>> {
+  rectangle "HTTP Sender / Utils\n(Повторные попытки HTTP)" as C_HTTP #A8A8A8
+}
+
+' Связи внутри Manager
+M_Server --> M_API : "Маршрутизация\nзапросов"
+M_Server --> M_Reg : "Приём\nрегистрации"
+M_API --> M_Dispatcher : "Передача\nзадач"
+M_Dispatcher --> M_Queue : "Извлечение\nзадач"
+M_Dispatcher --> M_Balancer : "Распределение\nнагрузки"
+M_Dispatcher --> M_Storage : "Обновление\nстатуса"
+M_Reg --> M_Balancer : "Регистрация\nворкеров"
+
+' Связи внутри Worker
+W_Server --> W_API : "Приём\nзаданий"
+W_API --> W_Pool : "Контроль\nпараллельности"
+W_Pool --> W_Cracker : "Запуск\nкряка"
+W_Reg --> M_Reg : "Отправка\nрегистрации"
+
+' Использование общих утилит
+C_HTTP .. M_API : "HTTP запросы"
+C_HTTP .. W_API : "HTTP запросы"
+
+' Взаимодействие между модулями
+M_Balancer --> W_API : "Доставка\nзадач"
+
+@enduml

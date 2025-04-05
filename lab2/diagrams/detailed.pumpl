@@ -1,0 +1,83 @@
+@startuml
+' Настройки внешнего вида
+skinparam backgroundColor #F0F8FF
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+title Подробная диаграмма
+
+' Manager Service
+package "Manager Service" <<Rectangle>> {
+  rectangle "HTTP Server\n(принимает клиентские запросы)" as M_Server #8EC0E4
+  rectangle "CrackHashHandler\n(обрабатывает /api/hash/crack)" as CH_Handler #8EC0E4
+  rectangle "Task Storage\n(хранит статусы и результаты)" as M_Storage #8EC0E4
+  rectangle "Task Queue\n(разбивка задачи на части)" as M_Queue #8EC0E4
+  rectangle "Task Dispatcher\n(распределяет задачи)" as M_Dispatcher #8EC0E4
+  rectangle "Load Balancer\n(выбирает воркера)" as M_Balancer #8EC0E4
+  rectangle "Worker Registration Handler" as M_Reg #8EC0E4
+  rectangle "Result Handler\n(принимает результаты)" as M_Result #8EC0E4
+}
+
+' Worker Service
+package "Worker Service" <<Rectangle>> {
+  rectangle "Config Loader\n(чтение env переменных)" as W_Config #F7B05B
+  rectangle "HTTP Server\n(принимает задания)" as W_Server #F7B05B
+  rectangle "CrackTaskHandler\n(обработка задачи)" as W_TaskHandler #F7B05B
+  rectangle "Worker Pool\n(ограничение параллельных задач)" as W_Pool #F7B05B
+  rectangle "MD5 Cracker\n(перебор хэшей)" as W_Cracker #F7B05B
+  rectangle "Registration Module\n(регистрация у менеджера)" as W_Reg #F7B05B
+  rectangle "Result Sender\n(отправка результата)" as W_Result #F7B05B
+}
+
+' Common Library
+package "Common Library" <<Rectangle>> {
+  rectangle "HTTP Sender / Utils\n(HTTP запросы с retry)" as C_HTTP #A8A8A8
+}
+
+' Поток обработки в Manager
+' Клиентский запрос поступает в менеджер
+actor Client
+Client --> M_Server : POST /api/hash/crack
+
+M_Server --> CH_Handler : "Обработка запроса\nсоздание RequestId"
+CH_Handler --> M_Storage : "Добавление задачи\n(новый RequestId)"
+CH_Handler --> M_Queue : "Разбивка задачи на части\nи push в очередь"
+CH_Handler --> M_Server : "Ответ клиенту\n(с RequestId)"
+
+' Dispatcher обрабатывает задачи
+M_Queue --> M_Dispatcher : "Извлечение задачи из очереди"
+M_Dispatcher --> M_Balancer : "Запрос свободного воркера"
+M_Balancer --> M_Dispatcher : "Возврат worker URL"
+M_Dispatcher --> C_HTTP : "Отправка задачи воркеру\n(через HTTP)"
+C_HTTP --> M_Dispatcher : "HTTP Response\n(успех/ошибка)"
+M_Dispatcher --> M_Queue : "Повторная постановка задачи\nпри неудаче"
+
+' Обработка регистрации воркеров
+W_Reg --> M_Reg : "Регистрация воркера"
+M_Reg --> M_Balancer : "Добавление воркера\nв балансировщик"
+
+' Прием результата от воркера
+W_Result --> C_HTTP : "HTTP отправка результата"
+C_HTTP --> M_Result : "Прием результата"
+M_Result --> M_Storage : "Обновление статуса задачи\n(запись результатов)"
+
+' Поток обработки в Worker
+' Загрузка конфигурации при старте воркера
+W_Config --> W_Server : "Инициализация HTTP сервера"
+W_Server --> W_TaskHandler : "Прием задания\nот менеджера"
+W_TaskHandler --> W_Pool : "Проверка доступных слотов"
+W_Pool --> W_Cracker : "Запуск перебора\nMD5 хэшей"
+W_Cracker --> W_TaskHandler : "Результат перебора"
+W_TaskHandler --> W_Result : "Формирование ответа\nи передача результата"
+
+
+' Использование Common Library
+C_HTTP .. M_Server : "HTTP запросы"
+C_HTTP .. W_Server : "HTTP запросы"
+
+' Взаимодействие между модулями
+M_Balancer --> W_Server : "Доставка задачи\nворкеру через HTTP API"
+
+@enduml
