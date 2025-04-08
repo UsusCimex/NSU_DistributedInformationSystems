@@ -42,7 +42,7 @@ func requeueChecker() {
 					task.SubTasks[i].Status = "PUBLISHED"
 					task.SubTasks[i].UpdatedAt = time.Now()
 					changed = true
-					log.Printf("Переотправлена подзадача %s для задачи %s", subTask.ID, task.RequestId)
+					log.Printf("Переотправлена подзадача %d для задачи %s", subTask.SubTaskNumber, task.RequestId)
 				}
 			}
 			if changed {

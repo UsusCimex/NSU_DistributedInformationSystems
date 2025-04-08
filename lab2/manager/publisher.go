@@ -10,9 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+// TaskMessage теперь не содержит RequestId, а только необходимые поля.
 type TaskMessage struct {
-	RequestId     string `json:"requestId"`
-	SubTaskId     string `json:"subTaskId"`
 	Hash          string `json:"hash"`
 	MaxLength     int    `json:"maxLength"`
 	SubTaskNumber int    `json:"subTaskNumber"`
@@ -32,7 +31,8 @@ func publisherLoop() {
 			continue
 		}
 
-		count := 0
+		totalPublished := 0
+		// Обходим все найденные hash-задачи.
 		for cursor.Next(ctx) {
 			var task HashTask
 			if err := cursor.Decode(&task); err != nil {
@@ -42,13 +42,11 @@ func publisherLoop() {
 
 			changed := false
 			for i, subTask := range task.SubTasks {
-				if subTask.Status == "RECEIVED" && count < 50 {
+				if subTask.Status == "RECEIVED" && totalPublished < 50 {
 					task.SubTasks[i].Status = "PUBLISHED"
 					task.SubTasks[i].UpdatedAt = time.Now()
 
 					msg := TaskMessage{
-						RequestId:     task.RequestId,
-						SubTaskId:     subTask.ID,
 						Hash:          subTask.Hash,
 						MaxLength:     task.MaxLength,
 						SubTaskNumber: subTask.SubTaskNumber,
@@ -74,9 +72,11 @@ func publisherLoop() {
 						log.Printf("Ошибка публикации сообщения: %v", err)
 						continue
 					}
-					log.Printf("Опубликована подзадача %s для задачи %s", subTask.ID, task.RequestId)
-					count++
+					totalPublished++
 					changed = true
+				}
+				if totalPublished >= 50 {
+					break
 				}
 			}
 
@@ -87,11 +87,15 @@ func publisherLoop() {
 				}
 			}
 
-			if count >= 50 {
+			if totalPublished >= 50 {
 				break
 			}
 		}
 		cursor.Close(ctx)
 		cancel()
+
+		if totalPublished > 0 {
+			log.Printf("Менеджер: опубликовано %d подзадач", totalPublished)
+		}
 	}
 }

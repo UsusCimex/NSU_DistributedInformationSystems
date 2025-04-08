@@ -54,7 +54,6 @@ func handleCrack(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	for i := 0; i < numSubTasks; i++ {
 		subTask := SubTask{
-			ID:            uuid.New().String(),
 			Hash:          req.Hash,
 			Status:        "RECEIVED",
 			CreatedAt:     now,

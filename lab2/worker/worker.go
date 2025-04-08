@@ -18,31 +18,28 @@ import (
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// Структура сообщения задачи, полученной из очереди "tasks".
+// TaskMessage теперь не содержит RequestId.
 type TaskMessage struct {
-	RequestId     string `json:"requestId"`
-	SubTaskId     string `json:"subTaskId"`
 	Hash          string `json:"hash"`
 	MaxLength     int    `json:"maxLength"`
 	SubTaskNumber int    `json:"subTaskNumber"`
 	SubTaskCount  int    `json:"subTaskCount"`
 }
 
-// Структура сообщения результата, которое отправляется в очередь "results".
+// ResultMessage теперь содержит Hash вместо RequestId.
 type ResultMessage struct {
-	RequestId string `json:"requestId"`
-	SubTaskId string `json:"subTaskId"`
-	WorkerId  string `json:"workerId"`
-	Result    string `json:"result"`
+	Hash          string `json:"hash"`
+	SubTaskNumber int    `json:"subTaskNumber"`
+	WorkerId      string `json:"workerId"`
+	Result        string `json:"result"`
 }
 
-// numberToCandidate преобразует число в строку длины length с использованием алфавита.
 func numberToCandidate(n, length int) string {
 	base := len(alphabet)
 	var candidate strings.Builder
 	for i := 0; i < length; i++ {
 		candidate.WriteByte(alphabet[n%base])
-		n /= base
+		n = n / base
 	}
 	runes := []rune(candidate.String())
 	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
@@ -51,17 +48,22 @@ func numberToCandidate(n, length int) string {
 	return string(runes)
 }
 
-// processTask выполняет обработку полученной подзадачи:
-// – обновляет статус subTask в MongoDB до "WORKING" (и подтверждает сообщение RabbitMQ);
-// – перебирает кандидатов согласно схеме: начиная с (subTaskNumber-1) и шагом равным количеству подзадач;
-// – по завершении обновляет subTask до "COMPLETE" и отправляет результат в очередь "results".
 func processTask(d amqp.Delivery, msg TaskMessage, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	filter := bson.M{"requestId": msg.RequestId, "subTasks.id": msg.SubTaskId}
+	// Фильтр ищет задачу по hash и подзадачу по subTaskNumber.
+	filter := bson.M{
+		"hash": msg.Hash,
+		"subTasks": bson.M{
+			"$elemMatch": bson.M{
+				"subTaskNumber": msg.SubTaskNumber,
+				"hash":          msg.Hash,
+			},
+		},
+	}
 	update := bson.M{"$set": bson.M{
 		"subTasks.$.status":    "WORKING",
 		"subTasks.$.workerId":  workerId,
@@ -71,21 +73,36 @@ func processTask(d amqp.Delivery, msg TaskMessage, wg *sync.WaitGroup) {
 
 	res, err := hashTaskCollection.UpdateOne(ctx, filter, update)
 	if err != nil || res.MatchedCount == 0 {
-		log.Printf("Worker %s: ошибка обновления subTask до WORKING: %v", workerId, err)
+		log.Printf("Worker %s: ошибка обновления подзадачи до WORKING: %v", workerId, err)
 		d.Nack(false, true)
 		return
 	}
 	d.Ack(false)
 
+	log.Printf("Worker %s: получил задачу с hash=%s, подзадача %d из %d", workerId, msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
+
 	foundResult := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
+	progressInterval := 100000
+	iterationCount := 0
+
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
+		iterationCount++
+		if iterationCount%progressInterval == 0 {
+			log.Printf("Worker %s: обработано %d кандидатов для подзадачи %d из %d (hash=%s)", workerId, iterationCount, msg.SubTaskNumber, msg.SubTaskCount, msg.Hash)
+		}
 		candidate := numberToCandidate(i, msg.MaxLength)
-		hash := md5.Sum([]byte(candidate))
-		if hex.EncodeToString(hash[:]) == msg.Hash {
+		hashBytes := md5.Sum([]byte(candidate))
+		if hex.EncodeToString(hashBytes[:]) == msg.Hash {
 			foundResult = candidate
 			break
 		}
+	}
+
+	if foundResult != "" {
+		log.Printf("Worker %s: найден результат для подзадачи %d из %d: %s", workerId, msg.SubTaskNumber, msg.SubTaskCount, foundResult)
+	} else {
+		log.Printf("Worker %s: результат не найден для подзадачи %d из %d (обработано итераций: %d)", workerId, msg.SubTaskNumber, msg.SubTaskCount, iterationCount)
 	}
 
 	update = bson.M{"$set": bson.M{
@@ -94,14 +111,14 @@ func processTask(d amqp.Delivery, msg TaskMessage, wg *sync.WaitGroup) {
 	}}
 	_, err = hashTaskCollection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		log.Printf("Worker %s: ошибка обновления subTask до COMPLETE: %v", workerId, err)
+		log.Printf("Worker %s: ошибка обновления подзадачи до COMPLETE: %v", workerId, err)
 	}
 
 	resMsg := ResultMessage{
-		RequestId: msg.RequestId,
-		SubTaskId: msg.SubTaskId,
-		WorkerId:  workerId,
-		Result:    foundResult,
+		Hash:          msg.Hash,
+		SubTaskNumber: msg.SubTaskNumber,
+		WorkerId:      workerId,
+		Result:        foundResult,
 	}
 	data, err := json.Marshal(resMsg)
 	if err != nil {
@@ -122,11 +139,10 @@ func processTask(d amqp.Delivery, msg TaskMessage, wg *sync.WaitGroup) {
 	if err != nil {
 		log.Printf("Worker %s: ошибка публикации сообщения результата: %v", workerId, err)
 	} else {
-		log.Printf("Worker %s: обработана подзадача %s", workerId, msg.SubTaskId)
+		log.Printf("Worker %s: отправлено сообщение результата по подзадаче %d из %d", workerId, msg.SubTaskNumber, msg.SubTaskCount)
 	}
 }
 
-// heartbeatUpdater каждую 10‑секунд обновляет поле Heartbeat для всех подзадач этого воркера.
 func heartbeatUpdater() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()

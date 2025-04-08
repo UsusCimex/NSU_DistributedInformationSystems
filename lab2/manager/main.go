@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/streadway/amqp"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -32,6 +33,30 @@ func main() {
 	db := mongoClient.Database("hash_cracker")
 	hashTaskCollection = db.Collection("hash_tasks")
 	log.Println("Подключение к MongoDB успешно")
+
+	// Создание индекса по полю "hash"
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "hash", Value: 1}},
+		Options: options.Index().SetBackground(true),
+	}
+	_, err = hashTaskCollection.Indexes().CreateOne(ctx, indexModel)
+	if err != nil {
+		log.Printf("Ошибка создания индекса по полю hash: %v", err)
+	} else {
+		log.Println("Индекс по полю hash успешно создан")
+	}
+
+	// Создание индекса по полю "requestId"
+	indexModel2 := mongo.IndexModel{
+		Keys:    bson.D{{Key: "requestId", Value: 1}},
+		Options: options.Index().SetBackground(true),
+	}
+	_, err = hashTaskCollection.Indexes().CreateOne(ctx, indexModel2)
+	if err != nil {
+		log.Printf("Ошибка создания индекса по полю requestId: %v", err)
+	} else {
+		log.Println("Индекс по полю requestId успешно создан")
+	}
 
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {

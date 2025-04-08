@@ -9,11 +9,12 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+// ResultMessage теперь содержит Hash вместо RequestId.
 type ResultMessage struct {
-	RequestId string `json:"requestId"`
-	SubTaskId string `json:"subTaskId"`
-	WorkerId  string `json:"workerId"`
-	Result    string `json:"result"`
+	Hash          string `json:"hash"`
+	SubTaskNumber int    `json:"subTaskNumber"`
+	WorkerId      string `json:"workerId"`
+	Result        string `json:"result"`
 }
 
 func resultConsumer() {
@@ -50,17 +51,18 @@ func resultConsumer() {
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Находим задачу по hash.
 		var task HashTask
-		err := hashTaskCollection.FindOne(ctx, bson.M{"requestId": res.RequestId}).Decode(&task)
+		err := hashTaskCollection.FindOne(ctx, bson.M{"hash": res.Hash}).Decode(&task)
 		if err != nil {
-			log.Printf("Задача %s не найдена при обработке результата", res.RequestId)
+			log.Printf("Задача с hash %s не найдена при обработке результата", res.Hash)
 			cancel()
 			continue
 		}
 
 		updated := false
 		for i, subTask := range task.SubTasks {
-			if subTask.ID == res.SubTaskId {
+			if subTask.SubTaskNumber == res.SubTaskNumber {
 				task.SubTasks[i].Status = "COMPLETE"
 				task.SubTasks[i].WorkerId = res.WorkerId
 				task.SubTasks[i].UpdatedAt = time.Now()
@@ -69,7 +71,7 @@ func resultConsumer() {
 			}
 		}
 		if !updated {
-			log.Printf("Подзадача %s не найдена в задаче %s", res.SubTaskId, res.RequestId)
+			log.Printf("Подзадача %d не найдена в задаче с hash %s", res.SubTaskNumber, res.Hash)
 			cancel()
 			continue
 		}
@@ -78,13 +80,13 @@ func resultConsumer() {
 		if res.Result != "" {
 			task.Status = "DONE"
 			task.Result = res.Result
-			log.Printf("Хэш расшифрован! Задача %s, результат: %s", res.RequestId, res.Result)
+			log.Printf("Хэш расшифрован! Задача с hash %s, результат: %s", res.Hash, res.Result)
 		} else if task.CompletedTaskCount >= task.SubTaskCount && task.Result == "" {
 			task.Status = "FAIL"
-			log.Printf("Хэш не расшифрован. Задача %s помечена как FAIL", res.RequestId)
+			log.Printf("Хэш не расшифрован. Задача с hash %s помечена как FAIL", res.Hash)
 		}
 
-		_, err = hashTaskCollection.UpdateOne(ctx, bson.M{"requestId": task.RequestId}, bson.M{
+		_, err = hashTaskCollection.UpdateOne(ctx, bson.M{"hash": task.Hash}, bson.M{
 			"$set": bson.M{
 				"subTasks":           task.SubTasks,
 				"completedTaskCount": task.CompletedTaskCount,

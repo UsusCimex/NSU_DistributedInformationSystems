@@ -2,12 +2,7 @@ package main
 
 import "time"
 
-type Task struct {
-	RequestId string    `bson:"requestId"`
-	Hash      string    `bson:"hash"`
-	CreatedAt time.Time `bson:"createdAt"`
-}
-
+// HashTask – основная задача для взлома хэша.
 type HashTask struct {
 	RequestId          string    `bson:"requestId"`
 	Hash               string    `bson:"hash"`
@@ -20,8 +15,8 @@ type HashTask struct {
 	CreatedAt          time.Time `bson:"createdAt"`
 }
 
+// SubTask – подзадача, определяется по hash и subTaskNumber.
 type SubTask struct {
-	ID            string    `bson:"id"`
 	Hash          string    `bson:"hash"`
 	Status        string    `bson:"status"` // RECEIVED, PUBLISHED, WORKING, COMPLETE
 	WorkerId      string    `bson:"workerId,omitempty"`

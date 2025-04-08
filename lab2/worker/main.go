@@ -61,7 +61,7 @@ func main() {
 	msgs, err := rabbitMQChannel.Consume(
 		"tasks",
 		"",
-		false, // auto-ack отключён
+		false,
 		false,
 		false,
 		false,
