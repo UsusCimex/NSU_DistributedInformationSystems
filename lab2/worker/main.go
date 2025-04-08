@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/streadway/amqp"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -25,8 +24,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Worker %s: ошибка создания MongoDB клиента: %v", workerId, err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Используем context.Background для подключения
+	ctx := context.Background()
 	err = mongoClient.Connect(ctx)
 	if err != nil {
 		log.Fatalf("Worker %s: ошибка подключения к MongoDB: %v", workerId, err)
@@ -61,7 +60,7 @@ func main() {
 	msgs, err := rabbitMQChannel.Consume(
 		"tasks",
 		"",
-		false,
+		false, // auto-ack отключён
 		false,
 		false,
 		false,
@@ -71,16 +70,25 @@ func main() {
 		log.Fatalf("Worker %s: ошибка регистрации consumer: %v", workerId, err)
 	}
 
+	// Семафор для ограничения количества одновременно обрабатываемых задач (не более 5)
+	sem := make(chan struct{}, 5)
 	var wg sync.WaitGroup
 	for d := range msgs {
-		var taskMsg TaskMessage
-		if err := json.Unmarshal(d.Body, &taskMsg); err != nil {
-			log.Printf("Worker %s: ошибка декодирования сообщения: %v", workerId, err)
-			d.Nack(false, false)
-			continue
-		}
+		sem <- struct{}{} // Блокируется, если уже 5 задач обрабатываются
 		wg.Add(1)
-		go processTask(d, taskMsg, &wg)
+		go func(d amqp.Delivery) {
+			defer wg.Done()
+			// После завершения обработки освобождаем слот
+			defer func() { <-sem }()
+			var taskMsg TaskMessage
+			if err := json.Unmarshal(d.Body, &taskMsg); err != nil {
+				log.Printf("Worker %s: ошибка декодирования сообщения: %v", workerId, err)
+				d.Nack(false, false)
+				return
+			}
+			// processTask теперь использует context.Background для долгих вычислений
+			processTask(d, taskMsg, &wg)
+		}(d)
 	}
 	wg.Wait()
 }

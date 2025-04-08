@@ -18,7 +18,7 @@ func requeueChecker() {
 			"subTasks": bson.M{
 				"$elemMatch": bson.M{
 					"status":    "WORKING",
-					"heartbeat": bson.M{"$lt": time.Now().Add(-10 * time.Second)},
+					"heartbeat": bson.M{"$lt": time.Now().Add(-20 * time.Second)},
 				},
 			},
 		}
@@ -38,11 +38,11 @@ func requeueChecker() {
 
 			changed := false
 			for i, subTask := range task.SubTasks {
-				if subTask.Status == "WORKING" && subTask.Heartbeat.Before(time.Now().Add(-10*time.Second)) {
+				if subTask.Status == "WORKING" && subTask.Heartbeat.Before(time.Now().Add(-20*time.Second)) {
 					task.SubTasks[i].Status = "PUBLISHED"
 					task.SubTasks[i].UpdatedAt = time.Now()
 					changed = true
-					log.Printf("Переотправлена подзадача %d для задачи %s", subTask.SubTaskNumber, task.RequestId)
+					log.Printf("Переотправлена подзадача (subTaskNumber=%d) для задачи с hash=%s", subTask.SubTaskNumber, task.Hash)
 				}
 			}
 			if changed {

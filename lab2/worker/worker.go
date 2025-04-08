@@ -18,7 +18,6 @@ import (
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// TaskMessage теперь не содержит RequestId.
 type TaskMessage struct {
 	Hash          string `json:"hash"`
 	MaxLength     int    `json:"maxLength"`
@@ -26,7 +25,6 @@ type TaskMessage struct {
 	SubTaskCount  int    `json:"subTaskCount"`
 }
 
-// ResultMessage теперь содержит Hash вместо RequestId.
 type ResultMessage struct {
 	Hash          string `json:"hash"`
 	SubTaskNumber int    `json:"subTaskNumber"`
@@ -51,8 +49,7 @@ func numberToCandidate(n, length int) string {
 func processTask(d amqp.Delivery, msg TaskMessage, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
+	ctx := context.Background()
 
 	// Фильтр ищет задачу по hash и подзадачу по subTaskNumber.
 	filter := bson.M{
