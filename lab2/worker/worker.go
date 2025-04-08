@@ -83,7 +83,7 @@ func processTask(d amqp.Delivery, msg TaskMessage) {
 
 	foundResult := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
-	progressInterval := 2_000_000
+	progressInterval := 25_000_000
 	iterationCount := 0
 
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
