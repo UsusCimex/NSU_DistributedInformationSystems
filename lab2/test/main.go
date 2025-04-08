@@ -5,127 +5,122 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
-	"strconv"
-	"strings"
+	"time"
 )
 
-type HashCrackRequest struct {
+const (
+	baseURL = "http://localhost:8080/api/hash"
+)
+
+type CrackRequest struct {
 	Hash      string `json:"hash"`
 	MaxLength int    `json:"maxLength"`
 }
 
-type HashCrackResponse struct {
+type CrackResponse struct {
 	RequestId string `json:"requestId"`
 }
 
-type CrackStatus struct {
-	Status string   `json:"status"`
-	Data   []string `json:"data"`
-}
-
-func computeMD5(text string) string {
-	sum := md5.Sum([]byte(text))
-	return hex.EncodeToString(sum[:])
-}
-
-func usage() {
-	fmt.Println("Usage:")
-	fmt.Println("  -md5 <text>             : prints MD5 hash of text")
-	fmt.Println("  -crack <hash> [maxLength] : sends crack request with optional maxLength (default=3) and returns requestId")
-	fmt.Println("  -status <requestId>     : fetches and prints status of crack request")
-	os.Exit(1)
+type StatusResponse struct {
+	Status string      `json:"status"`
+	Data   interface{} `json:"data"`
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
-	}
+	md5Command := flag.String("md5", "", "Строка для хэширования в MD5")
+	crackCommand := flag.String("crack", "", "MD5 хэш для расшифровки")
+	statusCommand := flag.String("status", "", "ID запроса для проверки статуса")
 
-	cmd := os.Args[1]
-	switch cmd {
-	case "-md5":
-		if len(os.Args) < 3 {
-			usage()
+	flag.Parse()
+
+	args := flag.Args()
+
+	switch {
+	case *md5Command != "":
+		hash := md5.Sum([]byte(*md5Command))
+		fmt.Printf("%s %d\n", hex.EncodeToString(hash[:]), len(*md5Command))
+
+	case *crackCommand != "":
+		if len(args) != 1 {
+			fmt.Println("Использование: -crack <hash> <length>")
+			os.Exit(1)
 		}
-		text := os.Args[2]
-		fmt.Println(computeMD5(text))
-	case "-crack":
-		if len(os.Args) < 3 {
-			usage()
+		maxLength := 0
+		if _, err := fmt.Sscanf(args[0], "%d", &maxLength); err != nil {
+			fmt.Println("Ошибка: длина должна быть числом")
+			os.Exit(1)
 		}
-		hash := os.Args[2]
-		maxLength := 3
-		if len(os.Args) >= 4 {
-			if v, err := strconv.Atoi(os.Args[3]); err == nil {
-				maxLength = v
-			} else {
-				fmt.Println("Invalid maxLength provided, using default 3")
-			}
-		}
-		reqPayload := HashCrackRequest{
-			Hash:      hash,
+
+		req := CrackRequest{
+			Hash:      *crackCommand,
 			MaxLength: maxLength,
 		}
-		jsonData, err := json.Marshal(reqPayload)
+		data, err := json.Marshal(req)
 		if err != nil {
-			fmt.Println("Error marshalling JSON:", err)
-			return
+			fmt.Printf("Ошибка: %v\n", err)
+			os.Exit(1)
 		}
-		crackURL := "http://localhost:8080/api/hash/crack"
-		resp, err := http.Post(crackURL, "application/json", bytes.NewBuffer(jsonData))
+
+		resp, err := http.Post(baseURL+"/crack", "application/json", bytes.NewBuffer(data))
 		if err != nil {
-			fmt.Println("Error sending crack request:", err)
-			return
+			fmt.Printf("Ошибка: %v\n", err)
+			os.Exit(1)
 		}
 		defer resp.Body.Close()
-		var crackResp HashCrackResponse
+
+		var crackResp CrackResponse
 		if err := json.NewDecoder(resp.Body).Decode(&crackResp); err != nil {
-			fmt.Println("Error decoding response:", err)
-			return
+			fmt.Printf("Ошибка: %v\n", err)
+			os.Exit(1)
 		}
-		fmt.Println("RequestId:", crackResp.RequestId)
-	case "-status":
-		if len(os.Args) < 3 {
-			usage()
-		}
-		requestId := os.Args[2]
-		statusURL := fmt.Sprintf("http://localhost:8080/api/hash/status?requestId=%s", requestId)
-		resp, err := http.Get(statusURL)
-		if err != nil {
-			fmt.Println("Error fetching status:", err)
-			return
-		}
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println("Error reading response:", err)
-			return
-		}
-		var status CrackStatus
-		if err := json.Unmarshal(body, &status); err != nil {
-			fmt.Println("Error decoding status:", err)
-			return
-		}
-		fmt.Printf("Status: %s\n", status.Status)
-		if status.Status == "IN_PROGRESS" && len(status.Data) > 0 {
-			progressStr := status.Data[0]
-			progressStr = strings.Trim(progressStr, "[]%")
-			progress, _ := strconv.ParseFloat(progressStr, 64)
-			fmt.Printf("Progress: %.1f%%\n", progress)
-		}
-		if status.Status == "DONE" && len(status.Data) > 0 {
-			fmt.Printf("Found %d results:\n", len(status.Data))
-			for i, result := range status.Data {
-				fmt.Printf("  %d. %s\n", i+1, result)
+
+		fmt.Printf("%s\n", crackResp.RequestId)
+
+	case *statusCommand != "":
+		for {
+			resp, err := http.Get(fmt.Sprintf("%s/status?requestId=%s", baseURL, *statusCommand))
+			if err != nil {
+				fmt.Printf("Ошибка: %v\n", err)
+				os.Exit(1)
 			}
-		} else if status.Status == "FAIL" {
-			fmt.Println("No results found")
+
+			var statusResp StatusResponse
+			if err := json.NewDecoder(resp.Body).Decode(&statusResp); err != nil {
+				resp.Body.Close()
+				fmt.Printf("Ошибка: %v\n", err)
+				os.Exit(1)
+			}
+			resp.Body.Close()
+
+			switch statusResp.Status {
+			case "DONE":
+				fmt.Printf("Результат: %v\n", statusResp.Data)
+				return
+			case "ERROR":
+				fmt.Printf("Ошибка: %v\n", statusResp.Data)
+				return
+			case "IN_PROGRESS":
+				progress, ok := statusResp.Data.(float64)
+				if !ok {
+					fmt.Printf("Ошибка формата прогресса\n")
+					return
+				}
+				fmt.Printf("Прогресс: %.2f%%\n", progress)
+				time.Sleep(1 * time.Second)
+			default:
+				fmt.Printf("Неизвестный статус: %s\n", statusResp.Status)
+				return
+			}
 		}
+
 	default:
-		usage()
+		fmt.Println("Использование:")
+		fmt.Println("  -md5 <string>         Хэширование строки в MD5")
+		fmt.Println("  -crack <hash> <length> Расшифровка MD5 хэша")
+		fmt.Println("  -status <id>          Проверка статуса расшифровки")
 	}
 }

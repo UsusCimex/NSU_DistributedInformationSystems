@@ -1,0 +1,100 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+)
+
+type ResultMessage struct {
+	RequestId string `json:"requestId"`
+	SubTaskId string `json:"subTaskId"`
+	WorkerId  string `json:"workerId"`
+	Result    string `json:"result"`
+}
+
+func resultConsumer() {
+	_, err := rabbitMQChannel.QueueDeclare(
+		"results",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("Ошибка объявления очереди results: %v", err)
+	}
+
+	msgs, err := rabbitMQChannel.Consume(
+		"results",
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("Ошибка регистрации consumer для results: %v", err)
+	}
+
+	for d := range msgs {
+		var res ResultMessage
+		if err := json.Unmarshal(d.Body, &res); err != nil {
+			log.Printf("Ошибка декодирования сообщения результата: %v", err)
+			continue
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		var task HashTask
+		err := hashTaskCollection.FindOne(ctx, bson.M{"requestId": res.RequestId}).Decode(&task)
+		if err != nil {
+			log.Printf("Задача %s не найдена при обработке результата", res.RequestId)
+			cancel()
+			continue
+		}
+
+		updated := false
+		for i, subTask := range task.SubTasks {
+			if subTask.ID == res.SubTaskId {
+				task.SubTasks[i].Status = "COMPLETE"
+				task.SubTasks[i].WorkerId = res.WorkerId
+				task.SubTasks[i].UpdatedAt = time.Now()
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			log.Printf("Подзадача %s не найдена в задаче %s", res.SubTaskId, res.RequestId)
+			cancel()
+			continue
+		}
+
+		task.CompletedTaskCount++
+		if res.Result != "" {
+			task.Status = "DONE"
+			task.Result = res.Result
+			log.Printf("Хэш расшифрован! Задача %s, результат: %s", res.RequestId, res.Result)
+		} else if task.CompletedTaskCount >= task.SubTaskCount && task.Result == "" {
+			task.Status = "FAIL"
+			log.Printf("Хэш не расшифрован. Задача %s помечена как FAIL", res.RequestId)
+		}
+
+		_, err = hashTaskCollection.UpdateOne(ctx, bson.M{"requestId": task.RequestId}, bson.M{
+			"$set": bson.M{
+				"subTasks":           task.SubTasks,
+				"completedTaskCount": task.CompletedTaskCount,
+				"status":             task.Status,
+				"result":             task.Result,
+			},
+		})
+		if err != nil {
+			log.Printf("Ошибка обновления задачи с результатом: %v", err)
+		}
+		cancel()
+	}
+}

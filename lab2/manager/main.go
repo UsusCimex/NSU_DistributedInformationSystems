@@ -1,0 +1,71 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/streadway/amqp"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+var (
+	hashTaskCollection *mongo.Collection
+	rabbitMQChannel    *amqp.Channel
+)
+
+func main() {
+	mongoClient, err := mongo.NewClient(options.Client().ApplyURI("mongodb://mongo:27017"))
+	if err != nil {
+		log.Fatalf("Ошибка создания клиента MongoDB: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err = mongoClient.Connect(ctx)
+	if err != nil {
+		log.Fatalf("Ошибка подключения к MongoDB: %v", err)
+	}
+
+	db := mongoClient.Database("hash_cracker")
+	hashTaskCollection = db.Collection("hash_tasks")
+	log.Println("Подключение к MongoDB успешно")
+
+	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
+	if err != nil {
+		log.Fatalf("Ошибка подключения к RabbitMQ: %v", err)
+	}
+	defer conn.Close()
+
+	rabbitMQChannel, err = conn.Channel()
+	if err != nil {
+		log.Fatalf("Ошибка открытия канала RabbitMQ: %v", err)
+	}
+	_, err = rabbitMQChannel.QueueDeclare(
+		"tasks",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatalf("Ошибка объявления очереди tasks: %v", err)
+	}
+
+	log.Println("Подключение к RabbitMQ успешно")
+
+	go publisherLoop()
+	go requeueChecker()
+	go resultConsumer()
+
+	http.HandleFunc("/api/hash/crack", handleCrack)
+	http.HandleFunc("/api/hash/status", handleStatus)
+
+	log.Println("Сервис Manager запущен на порту 8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("Ошибка HTTP-сервера: %v", err)
+	}
+}

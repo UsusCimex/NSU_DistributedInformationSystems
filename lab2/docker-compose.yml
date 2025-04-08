@@ -1,40 +1,48 @@
 services:
-  manager:
-    build:
-      context: .
-      dockerfile: Dockerfile.manager
+  mongo:
+    image: mongo:5.0
+    container_name: mongo
     ports:
-      - "${MANAGER_PORT}:${MANAGER_PORT}"
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  worker1:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    environment:
-      - MAX_WORKERS=15
-      - WORKER_URL=http://worker1:8080
-      - MANAGER_URL=${MANAGER_URL}
-    depends_on:
-      - manager
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  worker2:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    environment:
-      - MAX_WORKERS=10
-      - WORKER_URL=http://worker2:8080
-      - MANAGER_URL=${MANAGER_URL}
+  manager:
+    build: ./manager
+    container_name: manager
     depends_on:
-      - manager
+      - mongo
+      - rabbitmq
+    ports:
+      - "8080:8080"
 
-  worker3:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    environment:
-      - MAX_WORKERS=5
-      - WORKER_URL=http://worker3:8080
-      - MANAGER_URL=${MANAGER_URL}
+  worker:
+    build: ./worker
+    container_name: worker
     depends_on:
-      - manager
+      - mongo
+      - rabbitmq
+    # Для масштабирования можно воспользоваться командой:
+    # docker-compose up --scale worker=3
+
+volumes:
+  mongo_data:
