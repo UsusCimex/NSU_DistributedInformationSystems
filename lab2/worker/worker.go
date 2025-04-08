@@ -8,7 +8,6 @@ import (
 	"log"
 	"math"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -18,6 +17,7 @@ import (
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
+// TaskMessage больше не содержит RequestId.
 type TaskMessage struct {
 	Hash          string `json:"hash"`
 	MaxLength     int    `json:"maxLength"`
@@ -25,6 +25,7 @@ type TaskMessage struct {
 	SubTaskCount  int    `json:"subTaskCount"`
 }
 
+// ResultMessage теперь содержит Hash вместо RequestId.
 type ResultMessage struct {
 	Hash          string `json:"hash"`
 	SubTaskNumber int    `json:"subTaskNumber"`
@@ -39,6 +40,7 @@ func numberToCandidate(n, length int) string {
 		candidate.WriteByte(alphabet[n%base])
 		n = n / base
 	}
+	// Реверсируем строку
 	runes := []rune(candidate.String())
 	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
 		runes[i], runes[j] = runes[j], runes[i]
@@ -46,9 +48,10 @@ func numberToCandidate(n, length int) string {
 	return string(runes)
 }
 
-func processTask(d amqp.Delivery, msg TaskMessage, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+// processTask теперь не принимает WaitGroup и не вызывает wg.Done()
+// Управление завершением горутины происходит в main.
+func processTask(d amqp.Delivery, msg TaskMessage) {
+	// Используем context.Background без таймаута
 	ctx := context.Background()
 
 	// Фильтр ищет задачу по hash и подзадачу по subTaskNumber.
@@ -80,7 +83,7 @@ func processTask(d amqp.Delivery, msg TaskMessage, wg *sync.WaitGroup) {
 
 	foundResult := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
-	progressInterval := 100000
+	progressInterval := 2_000_000
 	iterationCount := 0
 
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {

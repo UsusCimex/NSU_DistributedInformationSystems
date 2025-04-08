@@ -24,7 +24,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Worker %s: ошибка создания MongoDB клиента: %v", workerId, err)
 	}
-	// Используем context.Background для подключения
 	ctx := context.Background()
 	err = mongoClient.Connect(ctx)
 	if err != nil {
@@ -55,6 +54,12 @@ func main() {
 		log.Fatalf("Worker %s: ошибка объявления очереди tasks: %v", workerId, err)
 	}
 
+	// Устанавливаем QoS: не более 5 сообщений одновременно
+	err = rabbitMQChannel.Qos(5, 0, false)
+	if err != nil {
+		log.Fatalf("Worker %s: ошибка установки QoS: %v", workerId, err)
+	}
+
 	go heartbeatUpdater()
 
 	msgs, err := rabbitMQChannel.Consume(
@@ -70,15 +75,15 @@ func main() {
 		log.Fatalf("Worker %s: ошибка регистрации consumer: %v", workerId, err)
 	}
 
-	// Семафор для ограничения количества одновременно обрабатываемых задач (не более 5)
+	// Семафор для ограничения одновременной обработки не более 5 задач
 	sem := make(chan struct{}, 5)
 	var wg sync.WaitGroup
 	for d := range msgs {
-		sem <- struct{}{} // Блокируется, если уже 5 задач обрабатываются
+		sem <- struct{}{}
 		wg.Add(1)
 		go func(d amqp.Delivery) {
 			defer wg.Done()
-			// После завершения обработки освобождаем слот
+			// После завершения обработки освобождаем слот семафора
 			defer func() { <-sem }()
 			var taskMsg TaskMessage
 			if err := json.Unmarshal(d.Body, &taskMsg); err != nil {
@@ -86,8 +91,7 @@ func main() {
 				d.Nack(false, false)
 				return
 			}
-			// processTask теперь использует context.Background для долгих вычислений
-			processTask(d, taskMsg, &wg)
+			processTask(d, taskMsg)
 		}(d)
 	}
 	wg.Wait()
