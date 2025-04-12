@@ -2,8 +2,10 @@ package mongodb
 
 import (
 	"context"
+	"log"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -16,10 +18,21 @@ func ConnectMongo(uri, dbName string) (*mongo.Client, *mongo.Database, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = client.Connect(ctx)
-	if err != nil {
+	if err = client.Connect(ctx); err != nil {
 		return nil, nil, err
 	}
 	db := client.Database(dbName)
+	createIndex(ctx, db, "hash_tasks", "hash")
+	createIndex(ctx, db, "hash_tasks", "requestId")
 	return client, db, nil
+}
+
+func createIndex(ctx context.Context, db *mongo.Database, collName, field string) {
+	index := mongo.IndexModel{
+		Keys:    bson.D{{Key: field, Value: 1}},
+		Options: options.Index().SetBackground(true),
+	}
+	if _, err := db.Collection(collName).Indexes().CreateOne(ctx, index); err != nil {
+		log.Printf("Ошибка создания индекса по полю %s: %v", field, err)
+	}
 }

@@ -15,7 +15,7 @@ type HashTask struct {
 	CreatedAt          time.Time `bson:"createdAt"`
 }
 
-// SubTask – подзадача, определяется по hash и subTaskNumber.
+// SubTask описывает подзадачу; идентифицируется по hash и subTaskNumber.
 type SubTask struct {
 	Hash          string    `bson:"hash"`
 	Status        string    `bson:"status"` // RECEIVED, PUBLISHED, WORKING, COMPLETE
@@ -24,4 +24,20 @@ type SubTask struct {
 	CreatedAt     time.Time `bson:"createdAt"`
 	UpdatedAt     time.Time `bson:"updatedAt"`
 	SubTaskNumber int       `bson:"subTaskNumber"`
+}
+
+// TaskMessage описывает сообщение для публикации задачи в RabbitMQ.
+type TaskMessage struct {
+	Hash          string `json:"hash"`
+	MaxLength     int    `json:"maxLength"`
+	SubTaskNumber int    `json:"subTaskNumber"`
+	SubTaskCount  int    `json:"subTaskCount"`
+}
+
+// ResultMessage описывает сообщение результата, полученное от Worker-а.
+type ResultMessage struct {
+	Hash          string `json:"hash"`
+	SubTaskNumber int    `json:"subTaskNumber"`
+	WorkerId      string `json:"workerId"`
+	Result        string `json:"result"`
 }

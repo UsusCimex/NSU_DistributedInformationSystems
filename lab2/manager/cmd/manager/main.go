@@ -4,106 +4,105 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/streadway/amqp"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"manager/internal/api"
+	"manager/internal/mongodb"
 	"manager/internal/publisher"
 	"manager/internal/receiver"
-	"manager/internal/requeue"
+
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var (
-	hashTaskCollection *mongo.Collection
-	rabbitMQChannel    *amqp.Channel
-)
+// ManagerApp инкапсулирует все основные зависимости сервиса.
+type ManagerApp struct {
+	MongoClient *mongo.Client
+	DB          *mongo.Database
+	RMQConn     *amqp.Connection
+	RMQChannel  *amqp.Channel
+	Publisher   *publisher.Publisher
+}
 
 func main() {
-	mongoClient, err := mongo.NewClient(options.Client().ApplyURI("mongodb://mongo:27017"))
+	app, err := initializeManagerApp()
 	if err != nil {
-		log.Fatalf("Ошибка создания клиента MongoDB: %v", err)
+		log.Fatalf("Ошибка инициализации: %v", err)
 	}
+	defer app.MongoClient.Disconnect(context.Background())
+	defer app.RMQConn.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	err = mongoClient.Connect(ctx)
+	// Запуск consumer-а для результатов.
+	receiver.StartResultConsumer(app.RMQChannel, app.DB.Collection("hash_tasks"))
+
+	// Запуск публикации подзадач.
+	go app.Publisher.Start()
+
+	// Запуск HTTP сервера.
+	startHTTPServer(app.DB.Collection("hash_tasks"))
+
+	// Можно использовать синхронизацию/обработку сигналов для graceful shutdown.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	wg.Wait()
+}
+
+func initializeManagerApp() (*ManagerApp, error) {
+	// Подключение к MongoDB
+	client, db, err := mongodb.ConnectMongo("mongodb://mongo:27017", "hash_cracker")
 	if err != nil {
-		log.Fatalf("Ошибка подключения к MongoDB: %v", err)
+		return nil, err
 	}
-
-	db := mongoClient.Database("hash_cracker")
-	hashTaskCollection = db.Collection("hash_tasks")
 	log.Println("Подключение к MongoDB успешно")
 
-	// Создание индекса по полю "hash"
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "hash", Value: 1}},
-		Options: options.Index().SetBackground(true),
-	}
-	_, err = hashTaskCollection.Indexes().CreateOne(ctx, indexModel)
-	if err != nil {
-		log.Printf("Ошибка создания индекса по полю hash: %v", err)
-	} else {
-		log.Println("Индекс по полю hash успешно создан")
-	}
-
-	// Создание индекса по полю "requestId"
-	indexModel2 := mongo.IndexModel{
-		Keys:    bson.D{{Key: "requestId", Value: 1}},
-		Options: options.Index().SetBackground(true),
-	}
-	_, err = hashTaskCollection.Indexes().CreateOne(ctx, indexModel2)
-	if err != nil {
-		log.Printf("Ошибка создания индекса по полю requestId: %v", err)
-	} else {
-		log.Println("Индекс по полю requestId успешно создан")
-	}
-
+	// Подключение к RabbitMQ
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
-		log.Fatalf("Ошибка подключения к RabbitMQ: %v", err)
+		return nil, err
 	}
-	defer conn.Close()
-
-	rabbitMQChannel, err = conn.Channel()
+	channel, err := conn.Channel()
 	if err != nil {
-		log.Fatalf("Ошибка открытия канала RabbitMQ: %v", err)
+		conn.Close()
+		return nil, err
 	}
-	_, err = rabbitMQChannel.QueueDeclare(
-		"tasks",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
+	// Объявление очереди "tasks".
+	_, err = channel.QueueDeclare("tasks", true, false, false, false, nil)
 	if err != nil {
-		log.Fatalf("Ошибка объявления очереди tasks: %v", err)
+		channel.Close()
+		conn.Close()
+		return nil, err
 	}
-
 	log.Println("Подключение к RabbitMQ успешно")
 
-	// Инициализируем пакеты, передавая им зависимости
-	publisher.Init(hashTaskCollection, rabbitMQChannel)
-	requeue.Init(hashTaskCollection)
-	receiver.Init(hashTaskCollection, rabbitMQChannel)
-	api.Init(hashTaskCollection)
+	pub := publisher.NewPublisher(db.Collection("hash_tasks"), channel)
 
-	// Запускаем фоновые процессы
-	go publisher.StartPublisherLoop()
-	go requeue.StartRequeueChecker()
-	go receiver.StartResultConsumer()
+	return &ManagerApp{
+		MongoClient: client,
+		DB:          db,
+		RMQConn:     conn,
+		RMQChannel:  channel,
+		Publisher:   pub,
+	}, nil
+}
 
-	// Регистрируем HTTP-обработчики
-	http.HandleFunc("/api/hash/crack", api.HandleCrack)
-	http.HandleFunc("/api/hash/status", api.HandleStatus)
-
-	log.Println("Сервис Manager запущен на порту 8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+func startHTTPServer(coll *mongo.Collection) {
+	mux := http.NewServeMux()
+	api.RegisterHandlers(mux, coll)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+	log.Printf("Сервис Manager запущен на порту %s", port)
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Ошибка HTTP-сервера: %v", err)
 	}
 }

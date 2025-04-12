@@ -19,12 +19,15 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 30s
+      start_period: 40s
 
   manager:
     build: ./manager
@@ -37,18 +40,17 @@ services:
     ports:
       - "8080:8080"
     restart: on-failure
+    environment:
+      - PORT=8080
 
   worker:
     build: ./worker
-    container_name: worker
     depends_on:
-      mongo:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     restart: on-failure
-    # Для масштабирования можно воспользоваться командой:
-    # docker-compose up --scale worker=3
+    deploy:
+      replicas: 2
 
 volumes:
   mongo_data:

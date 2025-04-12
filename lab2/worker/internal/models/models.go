@@ -1,6 +1,6 @@
 package models
 
-// TaskMessage описывает сообщение, получаемое из очереди "tasks" для обработки.
+// TaskMessage описывает задачу из очереди "tasks".
 type TaskMessage struct {
 	Hash          string `json:"hash"`
 	MaxLength     int    `json:"maxLength"`
@@ -8,7 +8,7 @@ type TaskMessage struct {
 	SubTaskCount  int    `json:"subTaskCount"`
 }
 
-// ResultMessage описывает сообщение результата, отправляемое в очередь "results".
+// ResultMessage описывает сообщение результата для очереди "results".
 type ResultMessage struct {
 	Hash          string `json:"hash"`
 	SubTaskNumber int    `json:"subTaskNumber"`

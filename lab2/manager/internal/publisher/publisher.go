@@ -13,108 +13,96 @@ import (
 	"manager/internal/models"
 )
 
-var (
-	hashTaskCollection *mongo.Collection
-	rabbitMQChannel    *amqp.Channel
-)
-
-// Init инициализирует пакет publisher.
-func Init(collection *mongo.Collection, channel *amqp.Channel) {
-	hashTaskCollection = collection
-	rabbitMQChannel = channel
+// Publisher публикует подзадачи из БД в очередь RabbitMQ.
+type Publisher struct {
+	coll         *mongo.Collection
+	rmqChannel   *amqp.Channel
+	publishLimit int
+	pollInterval time.Duration
 }
 
-// TaskMessage теперь не содержит RequestId, а только необходимые поля.
-type TaskMessage struct {
-	Hash          string `json:"hash"`
-	MaxLength     int    `json:"maxLength"`
-	SubTaskNumber int    `json:"subTaskNumber"`
-	SubTaskCount  int    `json:"subTaskCount"`
+func NewPublisher(coll *mongo.Collection, ch *amqp.Channel) *Publisher {
+	return &Publisher{
+		coll:         coll,
+		rmqChannel:   ch,
+		publishLimit: 50,
+		pollInterval: 1 * time.Second,
+	}
 }
 
-// StartPublisherLoop запускает цикл публикации задач.
-func StartPublisherLoop() {
-	publisherLoop()
-}
-
-func publisherLoop() {
-	ticker := time.NewTicker(1 * time.Second)
+func (p *Publisher) Start() {
+	ticker := time.NewTicker(p.pollInterval)
 	defer ticker.Stop()
-
 	for range ticker.C {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		cursor, err := hashTaskCollection.Find(ctx, bson.M{"subTasks.status": "RECEIVED"})
-		if err != nil {
-			log.Printf("Ошибка извлечения задач: %v", err)
-			cancel()
+		p.publishBatch()
+	}
+}
+
+func (p *Publisher) publishBatch() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cursor, err := p.coll.Find(ctx, bson.M{"subTasks.status": "RECEIVED"})
+	if err != nil {
+		log.Printf("Ошибка извлечения задач: %v", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	totalPublished := 0
+	for cursor.Next(ctx) {
+		var task models.HashTask
+		if err := cursor.Decode(&task); err != nil {
+			log.Printf("Ошибка декодирования задачи: %v", err)
 			continue
 		}
+		changed := false
+		for i, subTask := range task.SubTasks {
+			if subTask.Status == "RECEIVED" && totalPublished < p.publishLimit {
+				task.SubTasks[i].Status = "PUBLISHED"
+				task.SubTasks[i].UpdatedAt = time.Now()
 
-		totalPublished := 0
-		// Обходим все найденные hash-задачи.
-		for cursor.Next(ctx) {
-			var task models.HashTask
-			if err := cursor.Decode(&task); err != nil {
-				log.Printf("Ошибка декодирования задачи: %v", err)
-				continue
-			}
-
-			changed := false
-			for i, subTask := range task.SubTasks {
-				if subTask.Status == "RECEIVED" && totalPublished < 50 {
-					task.SubTasks[i].Status = "PUBLISHED"
-					task.SubTasks[i].UpdatedAt = time.Now()
-
-					msg := TaskMessage{
-						Hash:          subTask.Hash,
-						MaxLength:     task.MaxLength,
-						SubTaskNumber: subTask.SubTaskNumber,
-						SubTaskCount:  task.SubTaskCount,
-					}
-					data, err := json.Marshal(msg)
-					if err != nil {
-						log.Printf("Ошибка маршалинга сообщения: %v", err)
-						continue
-					}
-
-					err = rabbitMQChannel.Publish(
-						"",
-						"tasks",
-						false,
-						false,
-						amqp.Publishing{
-							ContentType: "application/json",
-							Body:        data,
-						},
-					)
-					if err != nil {
-						log.Printf("Ошибка публикации сообщения: %v", err)
-						continue
-					}
-					totalPublished++
-					changed = true
+				msg := models.TaskMessage{
+					Hash:          subTask.Hash,
+					MaxLength:     task.MaxLength,
+					SubTaskNumber: subTask.SubTaskNumber,
+					SubTaskCount:  task.SubTaskCount,
 				}
-				if totalPublished >= 50 {
-					break
-				}
-			}
-
-			if changed {
-				_, err = hashTaskCollection.UpdateOne(ctx, bson.M{"requestId": task.RequestId}, bson.M{"$set": bson.M{"subTasks": task.SubTasks}})
+				data, err := json.Marshal(msg)
 				if err != nil {
-					log.Printf("Ошибка обновления задачи: %v", err)
+					log.Printf("Ошибка маршалинга сообщения: %v", err)
+					continue
 				}
+				if err = p.rmqChannel.Publish(
+					"",
+					"tasks",
+					false,
+					false,
+					amqp.Publishing{
+						ContentType: "application/json",
+						Body:        data,
+					},
+				); err != nil {
+					log.Printf("Ошибка публикации сообщения: %v", err)
+					continue
+				}
+				totalPublished++
+				changed = true
 			}
-
-			if totalPublished >= 50 {
+			if totalPublished >= p.publishLimit {
 				break
 			}
 		}
-		cursor.Close(ctx)
-		cancel()
-
-		if totalPublished > 0 {
-			log.Printf("Менеджер: опубликовано %d подзадач", totalPublished)
+		if changed {
+			_, err = p.coll.UpdateOne(ctx, bson.M{"requestId": task.RequestId}, bson.M{"$set": bson.M{"subTasks": task.SubTasks}})
+			if err != nil {
+				log.Printf("Ошибка обновления задачи: %v", err)
+			}
 		}
+		if totalPublished >= p.publishLimit {
+			break
+		}
+	}
+	if totalPublished > 0 {
+		log.Printf("Опубликовано %d подзадач", totalPublished)
 	}
 }
