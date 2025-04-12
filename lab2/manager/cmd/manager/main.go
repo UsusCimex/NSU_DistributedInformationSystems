@@ -10,6 +10,11 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"manager/internal/api"
+	"manager/internal/publisher"
+	"manager/internal/receiver"
+	"manager/internal/requeue"
 )
 
 var (
@@ -82,12 +87,20 @@ func main() {
 
 	log.Println("Подключение к RabbitMQ успешно")
 
-	go publisherLoop()
-	go requeueChecker()
-	go resultConsumer()
+	// Инициализируем пакеты, передавая им зависимости
+	publisher.Init(hashTaskCollection, rabbitMQChannel)
+	requeue.Init(hashTaskCollection)
+	receiver.Init(hashTaskCollection, rabbitMQChannel)
+	api.Init(hashTaskCollection)
 
-	http.HandleFunc("/api/hash/crack", handleCrack)
-	http.HandleFunc("/api/hash/status", handleStatus)
+	// Запускаем фоновые процессы
+	go publisher.StartPublisherLoop()
+	go requeue.StartRequeueChecker()
+	go receiver.StartResultConsumer()
+
+	// Регистрируем HTTP-обработчики
+	http.HandleFunc("/api/hash/crack", api.HandleCrack)
+	http.HandleFunc("/api/hash/status", api.HandleStatus)
 
 	log.Println("Сервис Manager запущен на порту 8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {

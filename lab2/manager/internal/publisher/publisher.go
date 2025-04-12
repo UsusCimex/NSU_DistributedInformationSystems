@@ -1,4 +1,4 @@
-package main
+package publisher
 
 import (
 	"context"
@@ -8,7 +8,21 @@ import (
 
 	"github.com/streadway/amqp"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+
+	"manager/internal/models"
 )
+
+var (
+	hashTaskCollection *mongo.Collection
+	rabbitMQChannel    *amqp.Channel
+)
+
+// Init инициализирует пакет publisher.
+func Init(collection *mongo.Collection, channel *amqp.Channel) {
+	hashTaskCollection = collection
+	rabbitMQChannel = channel
+}
 
 // TaskMessage теперь не содержит RequestId, а только необходимые поля.
 type TaskMessage struct {
@@ -16,6 +30,11 @@ type TaskMessage struct {
 	MaxLength     int    `json:"maxLength"`
 	SubTaskNumber int    `json:"subTaskNumber"`
 	SubTaskCount  int    `json:"subTaskCount"`
+}
+
+// StartPublisherLoop запускает цикл публикации задач.
+func StartPublisherLoop() {
+	publisherLoop()
 }
 
 func publisherLoop() {
@@ -34,7 +53,7 @@ func publisherLoop() {
 		totalPublished := 0
 		// Обходим все найденные hash-задачи.
 		for cursor.Next(ctx) {
-			var task HashTask
+			var task models.HashTask
 			if err := cursor.Decode(&task); err != nil {
 				log.Printf("Ошибка декодирования задачи: %v", err)
 				continue

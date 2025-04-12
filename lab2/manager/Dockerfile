@@ -5,7 +5,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o manager .
+RUN go build -o manager ./cmd/manager
 
-EXPOSE 8080
 CMD ["./manager"]

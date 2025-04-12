@@ -1,4 +1,4 @@
-package main
+package requeue
 
 import (
 	"context"
@@ -6,7 +6,22 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+
+	"manager/internal/models"
 )
+
+var hashTaskCollection *mongo.Collection
+
+// Init инициализирует пакет requeue.
+func Init(collection *mongo.Collection) {
+	hashTaskCollection = collection
+}
+
+// StartRequeueChecker запускает процесс проверки и переотправки зависших подзадач.
+func StartRequeueChecker() {
+	requeueChecker()
+}
 
 func requeueChecker() {
 	ticker := time.NewTicker(10 * time.Second)
@@ -30,7 +45,7 @@ func requeueChecker() {
 			continue
 		}
 		for cursor.Next(ctx) {
-			var task HashTask
+			var task models.HashTask
 			if err := cursor.Decode(&task); err != nil {
 				log.Printf("Ошибка декодирования задачи: %v", err)
 				continue

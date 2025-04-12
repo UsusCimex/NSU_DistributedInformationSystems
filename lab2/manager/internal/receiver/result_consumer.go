@@ -1,4 +1,4 @@
-package main
+package receiver
 
 import (
 	"context"
@@ -6,8 +6,28 @@ import (
 	"log"
 	"time"
 
+	"github.com/streadway/amqp"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+
+	"manager/internal/models"
 )
+
+var (
+	hashTaskCollection *mongo.Collection
+	rabbitMQChannel    *amqp.Channel
+)
+
+// Init инициализирует пакет receiver.
+func Init(collection *mongo.Collection, channel *amqp.Channel) {
+	hashTaskCollection = collection
+	rabbitMQChannel = channel
+}
+
+// StartResultConsumer запускает процесс получения результатов от воркеров.
+func StartResultConsumer() {
+	resultConsumer()
+}
 
 // ResultMessage теперь содержит Hash вместо RequestId.
 type ResultMessage struct {
@@ -52,7 +72,7 @@ func resultConsumer() {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		// Находим задачу по hash.
-		var task HashTask
+		var task models.HashTask
 		err := hashTaskCollection.FindOne(ctx, bson.M{"hash": res.Hash}).Decode(&task)
 		if err != nil {
 			log.Printf("Задача с hash %s не найдена при обработке результата", res.Hash)

@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"context"
@@ -9,7 +9,17 @@ import (
 
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+
+	"manager/internal/models"
 )
+
+var hashTaskCollection *mongo.Collection
+
+// Init инициализирует пакет api.
+func Init(collection *mongo.Collection) {
+	hashTaskCollection = collection
+}
 
 // CrackRequest для POST /api/hash/crack.
 type CrackRequest struct {
@@ -28,7 +38,12 @@ type StatusResponse struct {
 	Data   interface{} `json:"data"`   // либо найденная строка, либо процент выполнения
 }
 
-// handleCrack создаёт новую задачу для взлома хэша.
+// HandleCrack создаёт новую задачу для взлома хэша.
+func HandleCrack(w http.ResponseWriter, r *http.Request) {
+	handleCrack(w, r)
+}
+
+// handleCrack - внутренняя реализация обработчика.
 func handleCrack(w http.ResponseWriter, r *http.Request) {
 	var req CrackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -39,7 +54,7 @@ func handleCrack(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var existingTask HashTask
+	var existingTask models.HashTask
 	err := hashTaskCollection.FindOne(ctx, bson.M{"hash": req.Hash}).Decode(&existingTask)
 	if err == nil {
 		resp := CrackResponse{RequestId: existingTask.RequestId}
@@ -50,10 +65,10 @@ func handleCrack(w http.ResponseWriter, r *http.Request) {
 	requestId := uuid.New().String()
 	numSubTasks := 100
 
-	var subTasks []SubTask
+	var subTasks []models.SubTask
 	now := time.Now()
 	for i := 0; i < numSubTasks; i++ {
-		subTask := SubTask{
+		subTask := models.SubTask{
 			Hash:          req.Hash,
 			Status:        "RECEIVED",
 			CreatedAt:     now,
@@ -63,7 +78,7 @@ func handleCrack(w http.ResponseWriter, r *http.Request) {
 		subTasks = append(subTasks, subTask)
 	}
 
-	hashTask := HashTask{
+	hashTask := models.HashTask{
 		RequestId:          requestId,
 		Hash:               req.Hash,
 		MaxLength:          req.MaxLength,
@@ -86,7 +101,12 @@ func handleCrack(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(CrackResponse{RequestId: requestId})
 }
 
-// handleStatus возвращает статус задачи по requestId.
+// HandleStatus возвращает статус задачи по requestId.
+func HandleStatus(w http.ResponseWriter, r *http.Request) {
+	handleStatus(w, r)
+}
+
+// handleStatus - внутренняя реализация обработчика.
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	requestId := r.URL.Query().Get("requestId")
 	if requestId == "" {
@@ -96,7 +116,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var task HashTask
+	var task models.HashTask
 	err := hashTaskCollection.FindOne(ctx, bson.M{"requestId": requestId}).Decode(&task)
 	if err != nil {
 		http.Error(w, "Задача не найдена", http.StatusNotFound)

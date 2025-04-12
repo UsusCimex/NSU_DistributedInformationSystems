@@ -5,9 +5,10 @@ import (
 	"log"
 	"sync"
 
-	"github.com/streadway/amqp"
 	"worker/internal/models"
 	"worker/internal/processor"
+
+	"github.com/streadway/amqp"
 )
 
 // ConsumeTasks получает сообщения из очереди "tasks" и передаёт их процессору.
