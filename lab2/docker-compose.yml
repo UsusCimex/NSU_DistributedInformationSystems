@@ -102,6 +102,7 @@ services:
     environment:
       - PORT=8080
       - MONGODB_URI=mongodb://root:secret@mongodb1:27017,mongodb2:27017,mongodb3:27017/?replicaSet=rs0&authSource=admin
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672
 
   worker:
     build: ./worker

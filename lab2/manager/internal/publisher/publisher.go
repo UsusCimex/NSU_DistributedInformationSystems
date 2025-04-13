@@ -15,21 +15,29 @@ import (
 
 // Publisher публикует подзадачи из БД в очередь RabbitMQ.
 type Publisher struct {
-	coll         *mongo.Collection
-	rmqChannel   *amqp.Channel
-	publishLimit int
-	pollInterval time.Duration
+	Collection          *mongo.Collection
+	RabbitMQConn        *amqp.Connection
+	RabbitMQChannel     *amqp.Channel
+	RabbitmqURL         string
+	publishLimit        int
+	pollInterval        time.Duration
+	reconnectMaxRetries int
 }
 
-func NewPublisher(coll *mongo.Collection, ch *amqp.Channel) *Publisher {
+// NewPublisher создаёт новый Publisher, принимая подключение, канал и строку подключения (rabbit URL).
+func NewPublisher(coll *mongo.Collection, conn *amqp.Connection, ch *amqp.Channel, rabbitmqURL string) *Publisher {
 	return &Publisher{
-		coll:         coll,
-		rmqChannel:   ch,
-		publishLimit: 100,
-		pollInterval: 1 * time.Second,
+		Collection:          coll,
+		RabbitMQConn:        conn,
+		RabbitMQChannel:     ch,
+		RabbitmqURL:         rabbitmqURL,
+		publishLimit:        50,
+		pollInterval:        1 * time.Second,
+		reconnectMaxRetries: 5,
 	}
 }
 
+// Start запускает периодическую публикацию подзадач.
 func (p *Publisher) Start() {
 	ticker := time.NewTicker(p.pollInterval)
 	defer ticker.Stop()
@@ -39,9 +47,9 @@ func (p *Publisher) Start() {
 }
 
 func (p *Publisher) publishBatch() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cursor, err := p.coll.Find(ctx, bson.M{"subTasks.status": "RECEIVED"})
+	cursor, err := p.Collection.Find(ctx, bson.M{"subTasks.status": "RECEIVED"})
 	if err != nil {
 		log.Printf("[Publisher]: Ошибка извлечения задач: %v", err)
 		return
@@ -72,17 +80,24 @@ func (p *Publisher) publishBatch() {
 					log.Printf("[Publisher] %s: Ошибка маршалинга сообщения: %v", task.Hash, err)
 					continue
 				}
-				if err = p.rmqChannel.Publish(
+				err = p.RabbitMQChannel.Publish(
 					"",
 					"tasks",
 					false,
 					false,
 					amqp.Publishing{
-						ContentType: "application/json",
-						Body:        data,
+						ContentType:  "application/json",
+						Body:         data,
+						DeliveryMode: amqp.Persistent, // Флаг для персистентного хранения
 					},
-				); err != nil {
+				)
+				if err != nil {
 					log.Printf("[Publisher] %s: Ошибка публикации сообщения: %v", task.Hash, err)
+					// Если произошла ошибка публикации, пробуем восстановить соединение.
+					if recErr := p.Reconnect(); recErr != nil {
+						log.Printf("[Publisher] %s: Не удалось восстановить соединение: %v", task.Hash, recErr)
+						continue
+					}
 					continue
 				}
 				totalPublished++
@@ -93,7 +108,7 @@ func (p *Publisher) publishBatch() {
 			}
 		}
 		if changed {
-			_, err = p.coll.UpdateOne(ctx, bson.M{"requestId": task.RequestId}, bson.M{"$set": bson.M{"subTasks": task.SubTasks}})
+			_, err = p.Collection.UpdateOne(ctx, bson.M{"requestId": task.RequestId}, bson.M{"$set": bson.M{"subTasks": task.SubTasks}})
 			if err != nil {
 				log.Printf("[Publisher] %s: Ошибка обновления задачи: %v", task.Hash, err)
 			}
@@ -103,6 +118,53 @@ func (p *Publisher) publishBatch() {
 		}
 	}
 	if totalPublished > 0 {
-		log.Printf("[Publisher]: Опубликовано %d подзадач", totalPublished)
+		log.Printf("[Publisher] Опубликовано %d подзадач", totalPublished)
 	}
+}
+
+// Reconnect пытается создать новый канал из существующего подключения и переобъявить очередь.
+func (p *Publisher) Reconnect() error {
+	// Если соединение закрыто – восстановим его.
+	if p.RabbitMQConn.IsClosed() {
+		var newConn *amqp.Connection
+		var err error
+		for i := 1; i <= p.reconnectMaxRetries; i++ {
+			newConn, err = amqp.Dial(p.RabbitmqURL)
+			if err != nil {
+				log.Printf("[Publisher] Попытка восстановления соединения %d/%d не удалась: %v", i, p.reconnectMaxRetries, err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			p.RabbitMQConn = newConn
+			log.Println("[Publisher] Восстановлено соединение с RabbitMQ")
+			break
+		}
+		if newConn == nil {
+			return err
+		}
+	}
+
+	// Создаём новый канал
+	var ch *amqp.Channel
+	var err error
+	for i := 1; i <= p.reconnectMaxRetries; i++ {
+		ch, err = p.RabbitMQConn.Channel()
+		if err != nil {
+			log.Printf("[Publisher] Попытка восстановления канала %d/%d не удалась: %v", i, p.reconnectMaxRetries, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		// Переобъявляем очередь "tasks"
+		_, err = ch.QueueDeclare("tasks", true, false, false, false, nil)
+		if err != nil {
+			log.Printf("[Publisher] Ошибка объявления очереди при восстановлении канала %d/%d: %v", i, p.reconnectMaxRetries, err)
+			ch.Close()
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		p.RabbitMQChannel = ch
+		log.Println("[Publisher] Восстановлено соединение с каналом RabbitMQ")
+		return nil
+	}
+	return err
 }

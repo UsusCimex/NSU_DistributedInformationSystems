@@ -52,19 +52,24 @@ func main() {
 
 func initializeManagerApp() (*ManagerApp, error) {
 	// Получаем строку подключения из переменной окружения.
-	uri := os.Getenv("MONGODB_URI")
-	if uri == "" {
-		uri = "mongodb://localhost:27017"
+	mongodbURI := os.Getenv("MONGODB_URI")
+	if mongodbURI == "" {
+		mongodbURI = "mongodb://localhost:27017"
 	}
 
 	// Подключение к MongoDB
-	client, db, err := mongodb.ConnectMongo(uri, "hash_cracker")
+	client, db, err := mongodb.ConnectMongo(mongodbURI, "hash_cracker")
 	if err != nil {
 		return nil, err
 	}
 	log.Println("[Manager]: Подключение к MongoDB успешно")
 
 	// Подключение к RabbitMQ
+	rabbitmqURL := os.Getenv("RABBITMQ_URI")
+	if rabbitmqURL == "" {
+		rabbitmqURL = "amqp://guest:guest@rabbitmq:5672/"
+	}
+
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
 		return nil, err
@@ -83,7 +88,7 @@ func initializeManagerApp() (*ManagerApp, error) {
 	}
 	log.Println("[Manager]: Подключение к RabbitMQ успешно")
 
-	pub := publisher.NewPublisher(db.Collection("hash_tasks"), channel)
+	pub := publisher.NewPublisher(db.Collection("hash_tasks"), conn, channel, rabbitmqURL)
 
 	return &ManagerApp{
 		MongoClient: client,
