@@ -59,6 +59,11 @@ func processResult(res models.ResultMessage, coll *mongo.Collection) {
 		return
 	}
 	task.CompletedTaskCount++
+
+	if task.CompletedTaskCount == task.SubTaskCount {
+		log.Printf("Все подзадачи для hash %s выполнены!", task.Hash)
+	}
+
 	if res.Result != "" {
 		task.Status = "DONE"
 		task.Result = res.Result

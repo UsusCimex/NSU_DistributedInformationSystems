@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -37,6 +38,10 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Неверный запрос", http.StatusBadRequest)
 		return
 	}
+	if (req.MaxLength < 1) || (req.MaxLength > 7) {
+		http.Error(w, "Max length between 1 and 7", http.StatusBadRequest)
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -45,9 +50,17 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(CrackResponse{RequestId: existing.RequestId})
 		return
 	}
+
 	requestId := uuid.New().String()
 	now := time.Now()
-	const numSubTasks = 100
+
+	const alphabetSize = 36 // a-z и 0-9
+	totalCandidates := math.Pow(float64(alphabetSize), float64(req.MaxLength))
+	const maxCandidatesPerSubTask = 25_000_000.0
+	numSubTasks := int(math.Ceil(totalCandidates / maxCandidatesPerSubTask))
+	if numSubTasks < 1 {
+		numSubTasks = 1
+	}
 
 	subTasks := make([]models.SubTask, numSubTasks)
 	for i := 0; i < numSubTasks; i++ {
@@ -60,7 +73,7 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	task := models.HashTask{
+	hashTask := models.HashTask{
 		RequestId:          requestId,
 		Hash:               req.Hash,
 		MaxLength:          req.MaxLength,
@@ -70,13 +83,14 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 		SubTasks:           subTasks,
 		CreatedAt:          now,
 	}
-	if _, err := h.coll.InsertOne(ctx, task); err != nil {
+
+	if _, err := h.coll.InsertOne(ctx, hashTask); err != nil {
 		log.Printf("Ошибка сохранения задачи: %v", err)
 		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Создана новая задача: %s", requestId)
+	log.Printf("Создана новая задача: %s, число подзадач: %d", requestId, numSubTasks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CrackResponse{RequestId: requestId})
 }
