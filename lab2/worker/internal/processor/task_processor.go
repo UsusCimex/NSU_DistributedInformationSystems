@@ -42,8 +42,8 @@ func NumberToCandidate(n, length int) string {
 }
 
 func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
-	log.Printf("[Processor] %s(%d): обработка задачи, подзадача %d из %d",
-		msg.Hash, msg.SubTaskNumber, msg.SubTaskNumber, msg.SubTaskCount)
+	log.Printf("[Processor] %s(%d/%d): начало обработки задачи",
+		msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
 
 	found := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
@@ -58,11 +58,11 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 	}
 
 	if found != "" {
-		log.Printf("[Processor] %s(%d): кандидат найден: %s",
-			msg.Hash, msg.SubTaskNumber, found)
+		log.Printf("[Processor] %s(%d/%d): кандидат найден: %s",
+			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, found)
 	} else {
-		log.Printf("[Processor] %s(%d): кандидат не найден",
-			msg.Hash, msg.SubTaskNumber)
+		log.Printf("[Processor] %s(%d/%d): кандидат не найден",
+			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
 	}
 
 	resMsg := models.ResultMessage{
@@ -73,8 +73,8 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 
 	data, err := json.Marshal(resMsg)
 	if err != nil {
-		log.Printf("[Processor] %s(%d): ошибка маршалинга результата: %v",
-			msg.Hash, msg.SubTaskNumber, err)
+		log.Printf("[Processor] %s(%d/%d): ошибка маршалинга результата: %v",
+			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, err)
 		return
 	}
 
@@ -82,11 +82,11 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 		ContentType: "application/json",
 		Body:        data,
 	}); err != nil {
-		log.Printf("[Processor] %s(%d): ошибка публикации результата: %v",
-			msg.Hash, msg.SubTaskNumber, err)
+		log.Printf("[Processor] %s(%d/%d): ошибка публикации результата: %v",
+			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, err)
 	} else {
-		log.Printf("[Processor] %s(%d): отправлено сообщение результата",
-			msg.Hash, msg.SubTaskNumber)
+		log.Printf("[Processor] %s(%d/%d): отправлено сообщение результата",
+			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
 	}
 
 	d.Ack(false)
