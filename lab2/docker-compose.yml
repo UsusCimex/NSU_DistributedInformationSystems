@@ -1,13 +1,70 @@
 services:
-  mongo:
-    image: mongo:5.0
-    container_name: mongo
+  mongodb1:
+    image: bitnami/mongodb:latest
+    container_name: mongodb1
+    environment:
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_NAME=rs0
+      - MONGODB_ROOT_PASSWORD=secret
+      - MONGODB_REPLICA_SET_KEY=myReplicaKey
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb1
+      - MONGODB_EXTRA_FLAGS=--quiet
     ports:
       - "27017:27017"
     volumes:
-      - mongo_data:/data/db
+      - mongodb1_data:/bitnami/mongodb
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      test: ["CMD", "mongosh", "--quiet", "localhost:27017", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mongodb2:
+    image: bitnami/mongodb:latest
+    container_name: mongodb2
+    depends_on:
+      - mongodb1
+    environment:
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_PRIMARY_HOST=mongodb1
+      - MONGODB_PRIMARY_PORT_NUMBER=27017
+      - MONGODB_REPLICA_SET_NAME=rs0
+      - MONGODB_INITIAL_PRIMARY_ROOT_PASSWORD=secret
+      - MONGODB_REPLICA_SET_KEY=myReplicaKey
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb2
+      - MONGODB_EXTRA_FLAGS=--quiet
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb2_data:/bitnami/mongodb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "localhost:27017", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mongodb3:
+    image: bitnami/mongodb:latest
+    container_name: mongodb3
+    depends_on:
+      - mongodb1
+    environment:
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_PRIMARY_HOST=mongodb1
+      - MONGODB_PRIMARY_PORT_NUMBER=27017
+      - MONGODB_REPLICA_SET_NAME=rs0
+      - MONGODB_INITIAL_PRIMARY_ROOT_PASSWORD=secret
+      - MONGODB_REPLICA_SET_KEY=myReplicaKey
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb3
+      - MONGODB_EXTRA_FLAGS=--quiet
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongodb3_data:/bitnami/mongodb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "localhost:27017", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,6 +79,8 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
       interval: 10s
@@ -33,7 +92,7 @@ services:
     build: ./manager
     container_name: manager
     depends_on:
-      mongo:
+      mongodb1:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -42,6 +101,7 @@ services:
     restart: on-failure
     environment:
       - PORT=8080
+      - MONGODB_URI=mongodb://root:secret@mongodb1:27017,mongodb2:27017,mongodb3:27017/?replicaSet=rs0&authSource=admin
 
   worker:
     build: ./worker
@@ -50,7 +110,10 @@ services:
         condition: service_healthy
     restart: on-failure
     deploy:
-      replicas: 2
+      replicas: 3
 
 volumes:
-  mongo_data:
+  mongodb1_data:
+  mongodb2_data:
+  mongodb3_data:
+  rabbitmq_data:

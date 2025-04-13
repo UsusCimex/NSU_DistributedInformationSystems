@@ -30,7 +30,7 @@ func main() {
 
 	for {
 		var wg sync.WaitGroup
-		sem := make(chan struct{}, 5) // ограничение одновременной обработки до 5 задач
+		sem := make(chan struct{}, 3) // ограничение одновременной обработки до 3 задач
 		log.Printf("%s: запускается consumer", workerID)
 		rabbitmq.ConsumeTasks(conn, proc, sem, &wg)
 		wg.Wait()

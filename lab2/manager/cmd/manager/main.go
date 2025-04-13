@@ -51,8 +51,14 @@ func main() {
 }
 
 func initializeManagerApp() (*ManagerApp, error) {
+	// Получаем строку подключения из переменной окружения.
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		// Значение по умолчанию с тремя узлами и replica set.
+		uri = "mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0"
+	}
 	// Подключение к MongoDB
-	client, db, err := mongodb.ConnectMongo("mongodb://mongo:27017", "hash_cracker")
+	client, db, err := mongodb.ConnectMongo(uri, "hash_cracker")
 	if err != nil {
 		return nil, err
 	}

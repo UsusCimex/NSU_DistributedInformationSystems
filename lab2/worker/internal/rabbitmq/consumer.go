@@ -57,7 +57,7 @@ func createChannel(conn *amqp.Connection) (*amqp.Channel, error) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		if err = ch.Qos(5, 0, false); err != nil {
+		if err = ch.Qos(3, 0, false); err != nil {
 			ch.Close()
 			log.Printf("Ошибка установки QoS: %v. Повтор через 5 секунд", err)
 			time.Sleep(5 * time.Second)
