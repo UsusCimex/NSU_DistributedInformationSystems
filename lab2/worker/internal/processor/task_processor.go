@@ -17,13 +17,11 @@ const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 // Processor выполняет обработку задач.
 type Processor struct {
-	WorkerID   string
 	RmqChannel *amqp.Channel
 }
 
-func NewProcessor(workerID string, ch *amqp.Channel) *Processor {
+func NewProcessor(ch *amqp.Channel) *Processor {
 	return &Processor{
-		WorkerID:   workerID,
 		RmqChannel: ch,
 	}
 }
@@ -44,17 +42,13 @@ func NumberToCandidate(n, length int) string {
 }
 
 func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
-	log.Printf("%s: обработка задачи hash=%s, подзадача %d из %d", p.WorkerID, msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
+	log.Printf("[Processor] %s(%d): обработка задачи, подзадача %d из %d",
+		msg.Hash, msg.SubTaskNumber, msg.SubTaskNumber, msg.SubTaskCount)
+
 	found := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
-	progressInterval := 25000000
-	iterationCount := 0
 
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
-		iterationCount++
-		if iterationCount%progressInterval == 0 {
-			log.Printf("%s: обработано %d кандидатов для подзадачи %d", p.WorkerID, iterationCount, msg.SubTaskNumber)
-		}
 		candidate := NumberToCandidate(i, msg.MaxLength)
 		hash := md5.Sum([]byte(candidate))
 		if hex.EncodeToString(hash[:]) == msg.Hash {
@@ -62,30 +56,38 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 			break
 		}
 	}
+
 	if found != "" {
-		log.Printf("%s: кандидат найден для подзадачи %d: %s", p.WorkerID, msg.SubTaskNumber, found)
+		log.Printf("[Processor] %s(%d): кандидат найден: %s",
+			msg.Hash, msg.SubTaskNumber, found)
 	} else {
-		log.Printf("%s: кандидат не найден для подзадачи %d, итераций: %d", p.WorkerID, msg.SubTaskNumber, iterationCount)
+		log.Printf("[Processor] %s(%d): кандидат не найден",
+			msg.Hash, msg.SubTaskNumber)
 	}
 
 	resMsg := models.ResultMessage{
 		Hash:          msg.Hash,
 		SubTaskNumber: msg.SubTaskNumber,
-		WorkerId:      p.WorkerID,
 		Result:        found,
 	}
+
 	data, err := json.Marshal(resMsg)
 	if err != nil {
-		log.Printf("%s: ошибка маршалинга результата: %v", p.WorkerID, err)
+		log.Printf("[Processor] %s(%d): ошибка маршалинга результата: %v",
+			msg.Hash, msg.SubTaskNumber, err)
 		return
 	}
+
 	if err = p.RmqChannel.Publish("", "results", false, false, amqp.Publishing{
 		ContentType: "application/json",
 		Body:        data,
 	}); err != nil {
-		log.Printf("%s: ошибка публикации результата: %v", p.WorkerID, err)
+		log.Printf("[Processor] %s(%d): ошибка публикации результата: %v",
+			msg.Hash, msg.SubTaskNumber, err)
 	} else {
-		log.Printf("%s: отправлено сообщение результата по подзадаче %d", p.WorkerID, msg.SubTaskNumber)
+		log.Printf("[Processor] %s(%d): отправлено сообщение результата",
+			msg.Hash, msg.SubTaskNumber)
 	}
+
 	d.Ack(false)
 }

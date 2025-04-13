@@ -12,6 +12,5 @@ type TaskMessage struct {
 type ResultMessage struct {
 	Hash          string `json:"hash"`
 	SubTaskNumber int    `json:"subTaskNumber"`
-	WorkerId      string `json:"workerId"`
 	Result        string `json:"result"`
 }
