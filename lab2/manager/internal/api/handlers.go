@@ -34,7 +34,7 @@ func RegisterHandlers(mux *http.ServeMux, coll *mongo.Collection) {
 func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 	var req CrackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("Ошибка декодирования запроса: %v", err)
+		log.Printf("[API]: Ошибка декодирования запроса: %v", err)
 		http.Error(w, "Неверный запрос", http.StatusBadRequest)
 		return
 	}
@@ -85,12 +85,12 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.coll.InsertOne(ctx, hashTask); err != nil {
-		log.Printf("Ошибка сохранения задачи: %v", err)
+		log.Printf("[API] %s: Ошибка сохранения задачи: %v", req.Hash, err)
 		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Создана новая задача: %s, число подзадач: %d", requestId, numSubTasks)
+	log.Printf("[API] %s: Создана новая задача: %s, число подзадач: %d", req.Hash, requestId, numSubTasks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CrackResponse{RequestId: requestId})
 }
@@ -106,6 +106,7 @@ func (h *APIHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	var task models.HashTask
 	if err := h.coll.FindOne(ctx, bson.M{"requestId": requestId}).Decode(&task); err != nil {
+		log.Printf("[API]: Задача с requestId %s не найдена", requestId)
 		http.Error(w, "Задача не найдена", http.StatusNotFound)
 		return
 	}

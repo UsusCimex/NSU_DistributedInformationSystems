@@ -25,7 +25,7 @@ func NewPublisher(coll *mongo.Collection, ch *amqp.Channel) *Publisher {
 	return &Publisher{
 		coll:         coll,
 		rmqChannel:   ch,
-		publishLimit: 50,
+		publishLimit: 100,
 		pollInterval: 1 * time.Second,
 	}
 }
@@ -43,7 +43,7 @@ func (p *Publisher) publishBatch() {
 	defer cancel()
 	cursor, err := p.coll.Find(ctx, bson.M{"subTasks.status": "RECEIVED"})
 	if err != nil {
-		log.Printf("Ошибка извлечения задач: %v", err)
+		log.Printf("[Publisher]: Ошибка извлечения задач: %v", err)
 		return
 	}
 	defer cursor.Close(ctx)
@@ -52,7 +52,7 @@ func (p *Publisher) publishBatch() {
 	for cursor.Next(ctx) {
 		var task models.HashTask
 		if err := cursor.Decode(&task); err != nil {
-			log.Printf("Ошибка декодирования задачи: %v", err)
+			log.Printf("[Publisher]: Ошибка декодирования задачи: %v", err)
 			continue
 		}
 		changed := false
@@ -69,7 +69,7 @@ func (p *Publisher) publishBatch() {
 				}
 				data, err := json.Marshal(msg)
 				if err != nil {
-					log.Printf("Ошибка маршалинга сообщения: %v", err)
+					log.Printf("[Publisher] %s: Ошибка маршалинга сообщения: %v", task.Hash, err)
 					continue
 				}
 				if err = p.rmqChannel.Publish(
@@ -82,7 +82,7 @@ func (p *Publisher) publishBatch() {
 						Body:        data,
 					},
 				); err != nil {
-					log.Printf("Ошибка публикации сообщения: %v", err)
+					log.Printf("[Publisher] %s: Ошибка публикации сообщения: %v", task.Hash, err)
 					continue
 				}
 				totalPublished++
@@ -95,7 +95,7 @@ func (p *Publisher) publishBatch() {
 		if changed {
 			_, err = p.coll.UpdateOne(ctx, bson.M{"requestId": task.RequestId}, bson.M{"$set": bson.M{"subTasks": task.SubTasks}})
 			if err != nil {
-				log.Printf("Ошибка обновления задачи: %v", err)
+				log.Printf("[Publisher] %s: Ошибка обновления задачи: %v", task.Hash, err)
 			}
 		}
 		if totalPublished >= p.publishLimit {
@@ -103,6 +103,6 @@ func (p *Publisher) publishBatch() {
 		}
 	}
 	if totalPublished > 0 {
-		log.Printf("Опубликовано %d подзадач", totalPublished)
+		log.Printf("[Publisher]: Опубликовано %d подзадач", totalPublished)
 	}
 }

@@ -30,7 +30,7 @@ type ManagerApp struct {
 func main() {
 	app, err := initializeManagerApp()
 	if err != nil {
-		log.Fatalf("Ошибка инициализации: %v", err)
+		log.Fatalf("[Manager]: Ошибка инициализации: %v", err)
 	}
 	defer app.MongoClient.Disconnect(context.Background())
 	defer app.RMQConn.Close()
@@ -62,7 +62,7 @@ func initializeManagerApp() (*ManagerApp, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Подключение к MongoDB успешно")
+	log.Println("[Manager]: Подключение к MongoDB успешно")
 
 	// Подключение к RabbitMQ
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
@@ -81,7 +81,7 @@ func initializeManagerApp() (*ManagerApp, error) {
 		conn.Close()
 		return nil, err
 	}
-	log.Println("Подключение к RabbitMQ успешно")
+	log.Println("[Manager]: Подключение к RabbitMQ успешно")
 
 	pub := publisher.NewPublisher(db.Collection("hash_tasks"), channel)
 
@@ -107,8 +107,8 @@ func startHTTPServer(coll *mongo.Collection) {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	log.Printf("Сервис Manager запущен на порту %s", port)
+	log.Printf("[Manager]: Сервис Manager запущен на порту %s", port)
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("Ошибка HTTP-сервера: %v", err)
+		log.Fatalf("[Manager]: Ошибка HTTP-сервера: %v", err)
 	}
 }

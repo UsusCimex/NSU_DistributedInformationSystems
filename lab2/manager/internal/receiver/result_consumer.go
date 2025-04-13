@@ -17,17 +17,17 @@ import (
 func StartResultConsumer(rmqChannel *amqp.Channel, coll *mongo.Collection) {
 	_, err := rmqChannel.QueueDeclare("results", true, false, false, false, nil)
 	if err != nil {
-		log.Fatalf("Ошибка объявления очереди results: %v", err)
+		log.Fatalf("[ResultConsumer]: Ошибка объявления очереди results: %v", err)
 	}
 	msgs, err := rmqChannel.Consume("results", "", true, false, false, false, nil)
 	if err != nil {
-		log.Fatalf("Ошибка регистрации consumer для results: %v", err)
+		log.Fatalf("[ResultConsumer]: Ошибка регистрации consumer для results: %v", err)
 	}
 	go func() {
 		for d := range msgs {
 			var res models.ResultMessage
 			if err := json.Unmarshal(d.Body, &res); err != nil {
-				log.Printf("Ошибка декодирования сообщения результата: %v", err)
+				log.Printf("[ResultConsumer]: Ошибка декодирования сообщения результата: %v", err)
 				continue
 			}
 			processResult(res, coll)
@@ -41,7 +41,7 @@ func processResult(res models.ResultMessage, coll *mongo.Collection) {
 
 	var task models.HashTask
 	if err := coll.FindOne(ctx, bson.M{"hash": res.Hash}).Decode(&task); err != nil {
-		log.Printf("Задача с hash %s не найдена", res.Hash)
+		log.Printf("[ResultConsumer] %s: Задача не найдена", res.Hash)
 		return
 	}
 	updated := false
@@ -55,22 +55,22 @@ func processResult(res models.ResultMessage, coll *mongo.Collection) {
 		}
 	}
 	if !updated {
-		log.Printf("Подзадача %d не найдена в задаче с hash %s", res.SubTaskNumber, res.Hash)
+		log.Printf("[ResultConsumer] %s: Подзадача %d не найдена в задаче", res.Hash, res.SubTaskNumber)
 		return
 	}
 	task.CompletedTaskCount++
 
 	if task.CompletedTaskCount == task.SubTaskCount {
-		log.Printf("Все подзадачи для hash %s выполнены!", task.Hash)
+		log.Printf("[ResultConsumer] %s: Все подзадачи выполнены!", task.Hash)
 	}
 
 	if res.Result != "" {
 		task.Status = "DONE"
 		task.Result = res.Result
-		log.Printf("Хэш расшифрован: %s, результат: %s", res.Hash, res.Result)
+		log.Printf("[ResultConsumer] %s: Хэш расшифрован, результат: %s", res.Hash, res.Result)
 	} else if task.CompletedTaskCount >= task.SubTaskCount && task.Result == "" {
 		task.Status = "FAIL"
-		log.Printf("Хэш не расшифрован, задача %s отмечена как FAIL", res.Hash)
+		log.Printf("[ResultConsumer] %s: Хэш не расшифрован, задача отмечена как FAIL", res.Hash)
 	}
 	if _, err := coll.UpdateOne(ctx, bson.M{"hash": task.Hash}, bson.M{
 		"$set": bson.M{
@@ -80,6 +80,6 @@ func processResult(res models.ResultMessage, coll *mongo.Collection) {
 			"result":             task.Result,
 		},
 	}); err != nil {
-		log.Printf("Ошибка обновления задачи с результатом: %v", err)
+		log.Printf("[ResultConsumer] %s: Ошибка обновления задачи с результатом: %v", task.Hash, err)
 	}
 }
