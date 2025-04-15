@@ -2,9 +2,10 @@ package mongodb
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"time"
 
+	"common/logger"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -33,6 +34,6 @@ func createIndex(ctx context.Context, db *mongo.Database, collName, field string
 		Options: options.Index().SetBackground(true),
 	}
 	if _, err := db.Collection(collName).Indexes().CreateOne(ctx, index); err != nil {
-		log.Printf("[MongoDB] Error creating index on field %s: %v", field, err)
+		logger.Log("MongoDB", fmt.Sprintf("Ошибка создания индекса на поле %s: %v", field, err))
 	}
 }

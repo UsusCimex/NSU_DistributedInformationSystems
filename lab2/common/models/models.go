@@ -7,7 +7,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// HashTask – основная задача для взлома хэша.
 type HashTask struct {
 	RequestId          string    `bson:"requestId"`
 	Hash               string    `bson:"hash"`
@@ -20,7 +19,6 @@ type HashTask struct {
 	CreatedAt          time.Time `bson:"createdAt"`
 }
 
-// SubTask описывает отдельную подзадачу.
 type SubTask struct {
 	Hash          string    `bson:"hash"`
 	SubTaskNumber int       `bson:"subTaskNumber"`
@@ -29,7 +27,6 @@ type SubTask struct {
 	UpdatedAt     time.Time `bson:"updatedAt"`
 }
 
-// TaskMessage – сообщение для публикации задачи в RabbitMQ.
 type TaskMessage struct {
 	Hash          string `json:"hash"`
 	MaxLength     int    `json:"maxLength"`
@@ -37,7 +34,6 @@ type TaskMessage struct {
 	SubTaskCount  int    `json:"subTaskCount"`
 }
 
-// ResultMessage – сообщение результата, отправляемое от Worker-а.
 type ResultMessage struct {
 	Hash          string `json:"hash"`
 	SubTaskNumber int    `json:"subTaskNumber"`

@@ -2,11 +2,12 @@ package rabbitmq
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"sync"
 	"time"
 
 	"common/amqputil"
+	"common/logger"
 	"common/models"
 	"worker/internal/processor"
 
@@ -14,35 +15,30 @@ import (
 )
 
 // ConsumeTasks регистрирует consumer для очереди "tasks" с реконнектом.
-// В функцию передаётся указатель на указатель на соединение, что позволяет обновлять соединение при реконнекте.
 func ConsumeTasks(conn **amqp.Connection, rabbitURI string, proc *processor.Processor, sem chan struct{}, wg *sync.WaitGroup) {
 	for {
-		// Попытка создать канал с нужной очередью.
 		ch, err := amqputil.CreateChannel(*conn, "tasks", 3)
 		if err != nil {
-			log.Printf("[Worker Consumer] Error creating channel: %v. Attempting reconnect...", err)
+			logger.Log("Worker Consumer", fmt.Sprintf("Ошибка создания канала: %v. Пытаемся реконнект...", err))
 			ch, err = amqputil.Reconnect(conn, rabbitURI, "tasks", 3, 5)
 			if err != nil {
-				log.Printf("[Worker Consumer] Reconnect failed: %v. Retrying in 5 seconds...", err)
+				logger.Log("Worker Consumer", fmt.Sprintf("Реконнект не удался: %v. Повтор через 5 секунд...", err))
 				time.Sleep(5 * time.Second)
 				continue
 			}
 		}
 
-		// Обновляем канал процессора.
 		proc.RmqChannel = ch
 
-		// Регистрируем consumer.
 		msgs, err := registerConsumer(ch)
 		if err != nil {
-			log.Printf("[Worker Consumer] Error registering consumer: %v. Retrying in 5 seconds...", err)
+			logger.Log("Worker Consumer", fmt.Sprintf("Ошибка регистрации consumer: %v. Повтор через 5 секунд...", err))
 			ch.Close()
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		log.Println("[Worker Consumer] Consumer registered")
+		logger.Log("Worker Consumer", "Consumer зарегистрирован")
 
-		// Обрабатываем сообщения из очереди.
 		for d := range msgs {
 			sem <- struct{}{}
 			wg.Add(1)
@@ -51,25 +47,23 @@ func ConsumeTasks(conn **amqp.Connection, rabbitURI string, proc *processor.Proc
 				defer func() { <-sem }()
 				var taskMsg models.TaskMessage
 				if err := json.Unmarshal(d.Body, &taskMsg); err != nil {
-					log.Printf("[Worker Consumer] Error unmarshalling message: %v", err)
+					logger.Log("Worker Consumer", fmt.Sprintf("Ошибка декодирования сообщения: %v", err))
 					d.Nack(false, false)
 					return
 				}
 				proc.ProcessTask(d, taskMsg)
 			}(d)
 		}
-		// Если цикл по сообщениям завершился – это признак закрытого канала, поэтому повторяем попытку реконнекта.
-		log.Println("[Worker Consumer] Channel closed. Reconnecting in 5 seconds...")
+		logger.Log("Worker Consumer", "Канал закрыт. Переподключение через 5 секунд...")
 		time.Sleep(5 * time.Second)
 	}
 }
 
-// registerConsumer пытается зарегистрировать consumer для очереди "tasks" в цикле до успеха.
 func registerConsumer(ch *amqp.Channel) (<-chan amqp.Delivery, error) {
 	for {
 		msgs, err := ch.Consume("tasks", "", false, false, false, false, nil)
 		if err != nil {
-			log.Printf("[Worker Consumer] Error registering consumer: %v. Retrying in 5 seconds...", err)
+			logger.Log("Worker Consumer", fmt.Sprintf("Ошибка регистрации consumer: %v. Повтор через 5 секунд...", err))
 			time.Sleep(5 * time.Second)
 			continue
 		}

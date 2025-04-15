@@ -1,11 +1,13 @@
 package processor
 
 import (
-	"common/models"
 	"context"
 	"errors"
-	"log"
+	"fmt"
 	"time"
+
+	"common/logger"
+	"common/models"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -17,7 +19,7 @@ func ProcessResult(res models.ResultMessage, coll *mongo.Collection) error {
 
 	var task models.HashTask
 	if err := coll.FindOne(ctx, bson.M{"hash": res.Hash}).Decode(&task); err != nil {
-		log.Printf("[ResultConsumer] %s: Задача не найдена", res.Hash)
+		logger.LogHash("Результаты", res.Hash, "Задача не найдена")
 		return errors.New("task not found")
 	}
 	updated := false
@@ -30,22 +32,22 @@ func ProcessResult(res models.ResultMessage, coll *mongo.Collection) error {
 		}
 	}
 	if !updated {
-		log.Printf("[ResultConsumer] %s: Подзадача %d не найдена в задаче", res.Hash, res.SubTaskNumber)
+		logger.LogTask("Результаты", res.Hash, res.SubTaskNumber, task.SubTaskCount, "Подзадача не найдена")
 		return errors.New("subtask not found")
 	}
 	task.CompletedTaskCount++
 
 	if task.CompletedTaskCount == task.SubTaskCount {
-		log.Printf("[ResultConsumer] %s: Все подзадачи выполнены!", task.Hash)
+		logger.LogHash("Результаты", task.Hash, "Все подзадачи выполнены")
 	}
 
 	if res.Result != "" {
 		task.Status = "DONE"
 		task.Result = res.Result
-		log.Printf("[ResultConsumer] %s: Хэш расшифрован, результат: %s", res.Hash, res.Result)
+		logger.LogHash("Результаты", res.Hash, fmt.Sprintf("Хэш расшифрован, результат: %s", res.Result))
 	} else if task.CompletedTaskCount >= task.SubTaskCount && task.Result == "" {
 		task.Status = "FAIL"
-		log.Printf("[ResultConsumer] %s: Хэш не расшифрован, задача отмечена как FAIL", res.Hash)
+		logger.LogHash("Результаты", res.Hash, "Хэш не расшифрован, задача отмечена как FAIL")
 	}
 
 	_, err := coll.UpdateOne(ctx, bson.M{"hash": task.Hash}, bson.M{
@@ -56,9 +58,8 @@ func ProcessResult(res models.ResultMessage, coll *mongo.Collection) error {
 			"result":             task.Result,
 		},
 	})
-
 	if err != nil {
-		log.Printf("[ResultConsumer] %s: Ошибка обновления задачи с результатом: %v", task.Hash, err)
+		logger.LogHash("Результаты", task.Hash, fmt.Sprintf("Ошибка обновления задачи: %v", err))
 		return err
 	}
 

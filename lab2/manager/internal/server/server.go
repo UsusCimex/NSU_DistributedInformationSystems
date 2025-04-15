@@ -3,20 +3,20 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 	"math"
 	"net/http"
 	"os"
 	"time"
 
+	"common/logger"
+	"common/models"
+
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-
-	"common/models"
 )
 
-// Определения типов для API.
 type CrackRequest struct {
 	Hash      string `json:"hash"`
 	MaxLength int    `json:"maxLength"`
@@ -31,7 +31,6 @@ type StatusResponse struct {
 	Data   interface{} `json:"data"`
 }
 
-// RegisterHandlers регистрирует API-эндпоинты.
 func RegisterHandlers(mux *http.ServeMux, coll *mongo.Collection) {
 	mux.HandleFunc("/api/hash/crack", func(w http.ResponseWriter, r *http.Request) {
 		handleCrack(w, r, coll)
@@ -44,7 +43,7 @@ func RegisterHandlers(mux *http.ServeMux, coll *mongo.Collection) {
 func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection) {
 	var req CrackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("[API] Error decoding request: %v", err)
+		logger.Log("API", "Ошибка декодирования запроса: "+err.Error())
 		http.Error(w, "Неверный запрос", http.StatusBadRequest)
 		return
 	}
@@ -66,7 +65,7 @@ func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection)
 
 	const alphabetSize = 36
 	totalCandidates := math.Pow(float64(alphabetSize), float64(req.MaxLength))
-	const maxCandidatesPerSubTask = 25_000_000.0
+	const maxCandidatesPerSubTask = 25000000.0
 	numSubTasks := int(math.Ceil(totalCandidates / maxCandidatesPerSubTask))
 	if numSubTasks < 1 {
 		numSubTasks = 1
@@ -95,12 +94,12 @@ func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection)
 	}
 
 	if _, err := coll.InsertOne(ctx, hashTask); err != nil {
-		log.Printf("[API] Error inserting task for hash %s: %v", req.Hash, err)
+		logger.Log("API", "Ошибка вставки задачи для хэша "+req.Hash+": "+err.Error())
 		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[API] Created new task for hash %s: %s with %d subtasks", req.Hash, requestId, numSubTasks)
+	logger.LogHash("API", req.Hash, "Создана задача: "+requestId+", подзадач: "+fmt.Sprintf("%d", numSubTasks))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CrackResponse{RequestId: requestId})
 }
@@ -116,7 +115,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request, coll *mongo.Collection
 
 	var task models.HashTask
 	if err := coll.FindOne(ctx, bson.M{"requestId": requestId}).Decode(&task); err != nil {
-		log.Printf("[API] Task with requestId %s not found", requestId)
+		logger.Log("API", "Задача с requestId "+requestId+" не найдена")
 		http.Error(w, "Задача не найдена", http.StatusNotFound)
 		return
 	}
@@ -137,7 +136,6 @@ func handleStatus(w http.ResponseWriter, r *http.Request, coll *mongo.Collection
 	json.NewEncoder(w).Encode(resp)
 }
 
-// StartHTTPServer запускает HTTP-сервер с зарегистрированными API-эндпоинтами.
 func StartHTTPServer(coll *mongo.Collection) {
 	mux := http.NewServeMux()
 	RegisterHandlers(mux, coll)
@@ -145,8 +143,9 @@ func StartHTTPServer(coll *mongo.Collection) {
 	if port == "" {
 		port = "8080"
 	}
-	log.Printf("[HTTP] Server running on port %s", port)
+	logger.Log("HTTP", "Сервер запущен на порту "+port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		log.Fatalf("[HTTP] Server error: %v", err)
+		logger.Log("HTTP", "Ошибка сервера: "+err.Error())
+		panic(err)
 	}
 }

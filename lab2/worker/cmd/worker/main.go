@@ -1,21 +1,22 @@
 package main
 
 import (
-	"log"
 	"sync"
 	"time"
 
+	"common/logger"
+	"log"
 	"worker/internal/connection"
 	"worker/internal/processor"
 	"worker/internal/rabbitmq"
 )
 
 func main() {
-	log.Println("[Worker] Starting...")
-
+	logger.Log("Worker", "Запуск...")
 	conn, rabbitURI, err := connection.ConnectRabbitMQ()
 	if err != nil {
-		log.Fatalf("[Worker] Failed to connect to RabbitMQ: %v", err)
+		logger.Log("Worker", "Не удалось подключиться к RabbitMQ: "+err.Error())
+		log.Fatal(err)
 	}
 	defer conn.Close()
 
@@ -24,10 +25,10 @@ func main() {
 	for {
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, 3)
-		log.Println("[Worker] Starting consumer...")
+		logger.Log("Worker", "Запуск потребителя...")
 		rabbitmq.ConsumeTasks(&conn, rabbitURI, proc, sem, &wg)
 		wg.Wait()
-		log.Println("[Worker] Consumer finished, restarting in 5 seconds...")
+		logger.Log("Worker", "Consumer завершил работу, перезапуск через 5 секунд")
 		time.Sleep(5 * time.Second)
 	}
 }

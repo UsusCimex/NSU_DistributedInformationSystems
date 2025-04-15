@@ -1,25 +1,25 @@
 package amqputil
 
 import (
-	"log"
+	"fmt"
 	"time"
+
+	"common/logger"
 
 	"github.com/streadway/amqp"
 )
 
-const (
-	DefaultMaxRetries = 5
-)
+const DefaultMaxRetries = 5
 
-// CreateChannel создаёт новый канал, объявляя очередь queueName с опциональным QoS.
-// Если число попыток превышает DefaultMaxRetries, возвращается ошибка.
+// CreateChannel создает канал и объявляет очередь.
+// При ошибке повторяет попытки до достижения лимита.
 func CreateChannel(conn *amqp.Connection, queueName string, qos int) (*amqp.Channel, error) {
 	attempts := 0
 	for {
 		attempts++
 		ch, err := conn.Channel()
 		if err != nil {
-			log.Printf("[AMQPUtil] Error opening channel: %v. Retrying in 5 seconds... (attempt %d/%d)", err, attempts, DefaultMaxRetries)
+			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка открытия канала: %v. Повтор через 5 секунд... (Попытка %d/%d)", err, attempts, DefaultMaxRetries))
 			if attempts >= DefaultMaxRetries {
 				return nil, err
 			}
@@ -28,7 +28,7 @@ func CreateChannel(conn *amqp.Connection, queueName string, qos int) (*amqp.Chan
 		}
 		_, err = ch.QueueDeclare(queueName, true, false, false, false, nil)
 		if err != nil {
-			log.Printf("[AMQPUtil] Error declaring queue: %v. Retrying in 5 seconds... (attempt %d/%d)", err, attempts, DefaultMaxRetries)
+			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка объявления очереди: %v. Повтор через 5 секунд... (Попытка %d/%d)", err, attempts, DefaultMaxRetries))
 			ch.Close()
 			if attempts >= DefaultMaxRetries {
 				return nil, err
@@ -38,7 +38,7 @@ func CreateChannel(conn *amqp.Connection, queueName string, qos int) (*amqp.Chan
 		}
 		if qos > 0 {
 			if err = ch.Qos(qos, 0, false); err != nil {
-				log.Printf("[AMQPUtil] Error setting QoS: %v. Retrying in 5 seconds... (attempt %d/%d)", err, attempts, DefaultMaxRetries)
+				logger.Log("RabbitMQ", fmt.Sprintf("Ошибка установки QoS: %v. Повтор через 5 секунд... (Попытка %d/%d)", err, attempts, DefaultMaxRetries))
 				ch.Close()
 				if attempts >= DefaultMaxRetries {
 					return nil, err
@@ -51,46 +51,43 @@ func CreateChannel(conn *amqp.Connection, queueName string, qos int) (*amqp.Chan
 	}
 }
 
-// Reconnect пытается восстановить соединение (если оно закрыто) и создать новый канал с объявлением очереди.
-// dialURL: URI для подключения, queueName: имя очереди, qos: нужное значение QoS, maxRetries: максимум попыток.
+// Reconnect пытается восстановить соединение и создать новый канал с очередью.
 func Reconnect(conn **amqp.Connection, dialURL, queueName string, qos, maxRetries int) (*amqp.Channel, error) {
-	// Если соединение закрыто – восстанавливаем его.
 	if (*conn).IsClosed() {
 		var newConn *amqp.Connection
 		var err error
 		for i := 1; i <= maxRetries; i++ {
 			newConn, err = amqp.Dial(dialURL)
 			if err != nil {
-				log.Printf("[AMQPUtil] Reconnect attempt %d/%d failed: %v", i, maxRetries, err)
+				logger.Log("RabbitMQ", fmt.Sprintf("Ошибка подключения (попытка %d/%d): %v", i, maxRetries, err))
 				time.Sleep(5 * time.Second)
 				continue
 			}
 			*conn = newConn
-			log.Println("[AMQPUtil] RabbitMQ connection restored")
+			logger.Log("RabbitMQ", "Соединение восстановлено")
 			break
 		}
 		if newConn == nil {
 			return nil, err
 		}
 	}
-	// Создаём новый канал.
 	var ch *amqp.Channel
 	var err error
 	for i := 1; i <= maxRetries; i++ {
 		ch, err = (*conn).Channel()
 		if err != nil {
-			log.Printf("[AMQPUtil] Channel reconnect attempt %d/%d failed: %v", i, maxRetries, err)
+			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка создания канала (попытка %d/%d): %v", i, maxRetries, err))
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		_, err = ch.QueueDeclare(queueName, true, false, false, false, nil)
 		if err != nil {
-			log.Printf("[AMQPUtil] Error declaring queue during channel reconnect attempt %d/%d: %v", i, maxRetries, err)
+			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка объявления очереди (попытка %d/%d): %v", i, maxRetries, err))
 			ch.Close()
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		log.Println("[AMQPUtil] RabbitMQ channel restored")
+		logger.Log("RabbitMQ", "Канал восстановлен")
 		return ch, nil
 	}
 	return nil, err

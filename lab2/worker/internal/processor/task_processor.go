@@ -4,10 +4,11 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"log"
+	"fmt"
 	"math"
 	"strings"
 
+	"common/logger"
 	"common/models"
 
 	"github.com/streadway/amqp"
@@ -20,7 +21,7 @@ type Processor struct {
 	RmqChannel *amqp.Channel
 }
 
-// NewProcessor создаёт новый процессор.
+// NewProcessor создает новый Processor.
 func NewProcessor(ch *amqp.Channel) *Processor {
 	return &Processor{RmqChannel: ch}
 }
@@ -33,7 +34,6 @@ func NumberToCandidate(n, length int) string {
 		candidate.WriteByte(alphabet[n%base])
 		n /= base
 	}
-	// Разворачиваем строку.
 	runes := []rune(candidate.String())
 	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
 		runes[i], runes[j] = runes[j], runes[i]
@@ -41,10 +41,9 @@ func NumberToCandidate(n, length int) string {
 	return string(runes)
 }
 
-// ProcessTask перебирает кандидатов для подзадачи и публикует результат в очередь "results".
-// Если публикация завершается ошибкой, она логируется (реконнект здесь не реализован, так как основной механизм реконнекта осуществляется на уровне consumer).
+// ProcessTask перебирает кандидатов для подзадачи и публикует результат.
 func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
-	log.Printf("[Processor] Processing task for hash %s, subtask %d/%d", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
+	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Начало обработки задачи")
 	found := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
@@ -56,9 +55,9 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 		}
 	}
 	if found != "" {
-		log.Printf("[Processor] Found candidate for hash %s: %s", msg.Hash, found)
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Найден кандидат: "+found)
 	} else {
-		log.Printf("[Processor] No candidate found for hash %s", msg.Hash)
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Кандидат не найден")
 	}
 	resMsg := models.ResultMessage{
 		Hash:          msg.Hash,
@@ -67,7 +66,7 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 	}
 	data, err := json.Marshal(resMsg)
 	if err != nil {
-		log.Printf("[Processor] Error marshalling result: %v", err)
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, fmt.Sprintf("Ошибка маршалинга результата: %v", err))
 		return
 	}
 	if err = p.RmqChannel.Publish(
@@ -80,11 +79,9 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 			Body:        data,
 		},
 	); err != nil {
-		log.Printf("[Processor] Error publishing result: %v", err)
-		// При необходимости можно добавить реконнект канала,
-		// но основной механизм реконнекта реализован на уровне consumer.
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, fmt.Sprintf("Ошибка публикации результата: %v", err))
 		return
 	}
-	log.Printf("[Processor] Result published for hash %s", msg.Hash)
+	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Результат опубликован")
 	d.Ack(false)
 }
