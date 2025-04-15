@@ -42,7 +42,7 @@ func NumberToCandidate(n, length int) string {
 }
 
 // ProcessTask перебирает кандидатов для подзадачи и публикует результат.
-func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
+func (p *Processor) ProcessTask(msg models.TaskMessage) {
 	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Начало обработки задачи")
 	found := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
@@ -83,5 +83,4 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 		return
 	}
 	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Результат опубликован")
-	d.Ack(false)
 }

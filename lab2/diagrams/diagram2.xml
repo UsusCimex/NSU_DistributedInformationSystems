@@ -1,0 +1,190 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.2.2 Chrome/134.0.6998.178 Electron/35.1.2 Safari/537.36" version="26.2.2">
+  <diagram name="Вызовы функций между пакетами" id="function_calls_layout">
+    <mxGraphModel dx="1095" dy="749" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="MMain" value="manager/cmd/manager/main" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="20" y="670" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="MConn" value="manager/internal/connection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;" parent="1" vertex="1">
+          <mxGeometry x="20" y="525" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="MRabbit" target="CRabbitUtil">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="570" y="700" />
+              <mxPoint x="570" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-19" value="PublishTask" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="MUBvMF-0ouOTZYCHQ1Th-18">
+          <mxGeometry x="-0.1538" y="-1" relative="1" as="geometry">
+            <mxPoint x="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MRabbit" value="manager/internal/rabbit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;" parent="1" vertex="1">
+          <mxGeometry x="310" y="670" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="MProc" target="MUBvMF-0ouOTZYCHQ1Th-3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="335" y="860" />
+              <mxPoint x="335" y="860" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-5" value="SaveResult" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="MUBvMF-0ouOTZYCHQ1Th-4">
+          <mxGeometry x="-0.0433" y="1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="MProc" target="MUBvMF-0ouOTZYCHQ1Th-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-13" value="Consume ReceiveTask&lt;div&gt;Mark publish&lt;/div&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="MUBvMF-0ouOTZYCHQ1Th-12">
+          <mxGeometry x="-0.2813" y="-3" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="MProc" target="MRabbit">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="475" y="770" />
+              <mxPoint x="475" y="770" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-21" value="PublishTask" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="MUBvMF-0ouOTZYCHQ1Th-20">
+          <mxGeometry x="-0.1667" relative="1" as="geometry">
+            <mxPoint x="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MProc" value="manager/internal/processor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;" parent="1" vertex="1">
+          <mxGeometry x="310" y="790" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="MServer" value="manager/internal/server" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;" parent="1" vertex="1">
+          <mxGeometry x="20" y="790" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="WMain" value="worker/cmd/worker/main" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ead1dc;" parent="1" vertex="1">
+          <mxGeometry x="30" y="170" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="WConn" target="MUBvMF-0ouOTZYCHQ1Th-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-11" value="ConnectRabbitMq" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="MUBvMF-0ouOTZYCHQ1Th-10">
+          <mxGeometry x="-0.1" y="2" relative="1" as="geometry">
+            <mxPoint y="-38" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WConn" value="worker/internal/connection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4cccc;" parent="1" vertex="1">
+          <mxGeometry x="30" y="50" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="WProc" value="worker/internal/processor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4cccc;" parent="1" vertex="1">
+          <mxGeometry x="350" y="170" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="WRabbit" value="worker/internal/rabbitmq" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4cccc;" parent="1" vertex="1">
+          <mxGeometry x="30" y="290" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="CRabbitUtil" value="common/rabbitmqutil" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" parent="1" vertex="1">
+          <mxGeometry x="280" y="390" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="CMongo" value="common/mongodb" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" parent="1" vertex="1">
+          <mxGeometry x="30" y="390" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="ConnectMongoDB, ConnectRabbitMQ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="MMain" target="MConn" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="StartPublisher, StartResultConsumer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="MMain" target="MRabbit" edge="1">
+          <mxGeometry y="20" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" value="StartHTTPServer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="MMain" target="MServer" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="ConnectMongo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="MConn" target="CMongo" edge="1">
+          <mxGeometry x="-0.0667" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="130" y="480" />
+              <mxPoint x="130" y="480" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" value="CreateChannel, Reconnect" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="MConn" target="CRabbitUtil" edge="1">
+          <mxGeometry x="0.3514" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="320" y="555" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="CreateChannel, Reconnect&lt;div&gt;ConsumeResult&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="MRabbit" target="CRabbitUtil" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="520" />
+              <mxPoint x="420" y="520" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" value="ProcessResult" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="MRabbit" target="MProc" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="390" y="760" />
+              <mxPoint x="390" y="760" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="ConnectRabbitMQ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="WMain" target="WConn" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" value="NewProcessor" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="WMain" target="WProc" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" value="ConsumeTasks" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="WMain" target="WRabbit" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22" value="CreateChannel, Reconnect&lt;div&gt;ConsumeTask&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="WRabbit" target="CRabbitUtil" edge="1">
+          <mxGeometry x="-0.2381" y="-20" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e23" value="ProcessTask" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;html=1;" parent="1" source="WRabbit" target="WProc" edge="1">
+          <mxGeometry x="-0.2143" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="300" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.816;entryY=-0.032;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="WProc" target="CRabbitUtil">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-2" value="RublishResult" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="MUBvMF-0ouOTZYCHQ1Th-1">
+          <mxGeometry x="-0.1518" relative="1" as="geometry">
+            <mxPoint y="3" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-3" value="common/mongodb" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="1">
+          <mxGeometry x="170" y="900" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.225;entryY=-0.018;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="MServer" target="MUBvMF-0ouOTZYCHQ1Th-3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="220" y="875" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-7" value="SaveTask" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="MUBvMF-0ouOTZYCHQ1Th-6">
+          <mxGeometry x="0.0119" y="-1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="MUBvMF-0ouOTZYCHQ1Th-8" value="common/rabbitmqutil" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="1">
+          <mxGeometry x="300" y="50" width="220" height="60" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

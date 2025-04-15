@@ -51,7 +51,8 @@ func ConsumeTasks(conn **amqp.Connection, rabbitURI string, proc *processor.Proc
 					d.Nack(false, false)
 					return
 				}
-				proc.ProcessTask(d, taskMsg)
+				proc.ProcessTask(taskMsg)
+				d.Ack(false)
 			}(d)
 		}
 		logger.Log("Worker Consumer", "Канал закрыт. Переподключение через 5 секунд...")
