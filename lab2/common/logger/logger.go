@@ -1,18 +1,20 @@
 package logger
 
-import "log"
+import (
+	"log"
+)
 
-// Log выводит сообщение компонента без контекста задачи.
-func Log(component, message string) {
-	log.Printf("[%s] : %s", component, message)
+// Log выводит общее сообщение журнала с тегом компонента.
+func Log(component string, message string) {
+	log.Printf("[%s] %s", component, message)
 }
 
-// LogHash выводит сообщение с указанием хэша задачи.
-func LogHash(component, hash, message string) {
-	log.Printf("[%s] \"%s\": %s", component, hash, message)
+// LogHash выводит сообщение журнала, связанное с определенным хешем (задачей) с тегом компонента.
+func LogHash(component string, hash string, message string) {
+	log.Printf("[%s] [%s] %s", component, hash, message)
 }
 
-// LogTask выводит сообщение с указанием хэша, номера подзадачи и общего количества подзадач.
-func LogTask(component, hash string, taskNum, total int, message string) {
-	log.Printf("[%s] \"%s(%d/%d)\": %s", component, hash, taskNum, total, message)
+// LogTask выводит сообщение журнала, связанное с определенной подзадачей задачи взлома хеша.
+func LogTask(component string, hash string, subTaskNum int, subTaskCount int, message string) {
+	log.Printf("[%s] [%s:%d/%d] %s", component, hash, subTaskNum, subTaskCount, message)
 }

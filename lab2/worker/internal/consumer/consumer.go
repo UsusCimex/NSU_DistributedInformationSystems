@@ -3,7 +3,6 @@ package consumer
 import (
 	"encoding/json"
 	"sync"
-	"time"
 
 	"common/amqputil"
 	"common/logger"
@@ -13,18 +12,17 @@ import (
 	"github.com/streadway/amqp"
 )
 
-// Consume создаёт канал, регистрирует consumer-а очереди "tasks" и обрабатывает входящие сообщения.
-func Consume(conn **amqp.Connection, rabbitURI string) error {
-	// Создаем канал через общий пакет, используя актуальное соединение
-	ch, err := amqputil.CreateChannel(*conn, "tasks", 3)
+// Consume подключается к очереди "tasks", потребляет сообщения и обрабатывает их.
+// Возвращает ошибку при закрытии канала или соединения для обработки переподключения.
+func Consume(connPtr **amqp.Connection, rabbitURI string) error {
+	// Создаем канал для очереди "tasks" с предварительной выборкой 3 сообщений за раз
+	ch, err := amqputil.CreateChannel(*connPtr, "tasks", 3)
 	if err != nil {
-		// Если ошибка вызвана закрытым соединением, пробуем реконнект
-		if (*conn).IsClosed() {
-			var newCh *amqp.Channel
-			newCh, err = amqputil.Reconnect(conn, rabbitURI, "tasks", 3, 5)
-			if err != nil {
-				logger.Log("Worker Consumer", "Не удалось восстановить соединение: "+err.Error())
-				return err
+		if *connPtr != nil && (*connPtr).IsClosed() {
+			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, "tasks", 3, 5)
+			if recErr != nil {
+				logger.Log("Worker Consumer", "Не удалось восстановить канал: "+recErr.Error())
+				return recErr
 			}
 			ch = newCh
 		} else {
@@ -34,38 +32,40 @@ func Consume(conn **amqp.Connection, rabbitURI string) error {
 	}
 	defer ch.Close()
 
-	// Регистрируем consumer для очереди "tasks"
+	// Подписываемся на очередь "tasks"
 	msgs, err := ch.Consume("tasks", "", false, false, false, false, nil)
 	if err != nil {
 		logger.Log("Worker Consumer", "Ошибка регистрации consumer: "+err.Error())
 		return err
 	}
-	logger.Log("Worker Consumer", "Consumer зарегистрирован")
+	logger.Log("Worker Consumer", "Consumer для очереди 'tasks' зарегистрирован")
 
+	// Используем WaitGroup для синхронизации обработки сообщений
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 3)
+	// Ограничиваем количество одновременно запущенных горутин
+	maxConcurrent := 3
+	sem := make(chan struct{}, maxConcurrent)
 
-	// Обрабатываем входящие сообщения
+	// Обработка входящих сообщений
 	for d := range msgs {
 		sem <- struct{}{}
 		wg.Add(1)
-		go func(d amqp.Delivery) {
+		go func(delivery amqp.Delivery) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
 			var taskMsg models.TaskMessage
-			if err := json.Unmarshal(d.Body, &taskMsg); err != nil {
+			if err := json.Unmarshal(delivery.Body, &taskMsg); err != nil {
 				logger.Log("Worker Consumer", "Ошибка декодирования сообщения: "+err.Error())
-				d.Nack(false, false)
+				delivery.Nack(false, false)
 				return
 			}
-			// Обработка подзадачи через пакет processor
 			processor.ProcessTask(ch, taskMsg)
-			d.Ack(false)
+			delivery.Ack(false)
 		}(d)
 	}
+
 	wg.Wait()
-	logger.Log("Worker Consumer", "Канал закрыт, переподключаемся через 5 секунд...")
-	time.Sleep(5 * time.Second)
+	logger.Log("Worker Consumer", "Канал 'tasks' закрыт")
 	return nil
 }

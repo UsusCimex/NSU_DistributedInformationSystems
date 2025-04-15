@@ -16,27 +16,31 @@ import (
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// NumberToCandidate преобразует число в строку-кандидат заданной длины.
-func NumberToCandidate(n, length int) string {
+// NumberToCandidate преобразует число в строку в системе счисления с основанием len(alphabet) заданной длины.
+// Используется для генерации кандидатов паролей определенной длины из индекса.
+func NumberToCandidate(n int, length int) string {
 	base := len(alphabet)
-	var candidate strings.Builder
+	var candidateBuilder strings.Builder
 	for i := 0; i < length; i++ {
-		candidate.WriteByte(alphabet[n%base])
+		candidateBuilder.WriteByte(alphabet[n%base])
 		n /= base
 	}
-	// Реверс строки для получения корректного кандидата
-	runes := []rune(candidate.String())
+	// Переворачиваем строку
+	runes := []rune(candidateBuilder.String())
 	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
 		runes[i], runes[j] = runes[j], runes[i]
 	}
 	return string(runes)
 }
 
-// ProcessTask перебирает кандидатов для подзадачи, ищет совпадение по MD5 и публикует результат.
+// ProcessTask перебирает пространство поиска для данной подзадачи, проверяет каждого кандидата на соответствие хешу и публикует результат.
 func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Начало обработки задачи")
 	found := ""
+	// Вычисляем общее количество кандидатов длиной <= MaxLength
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
+
+	// Перебираем часть пространства поиска, назначенную этой подзадаче
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
 		candidate := NumberToCandidate(i, msg.MaxLength)
 		sum := md5.Sum([]byte(candidate))
@@ -47,11 +51,12 @@ func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 	}
 
 	if found != "" {
-		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Найден кандидат: "+found)
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Найден пароль: "+found)
 	} else {
-		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Кандидат не найден")
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Пароль не найден в данной подзадаче")
 	}
 
+	// Отправляем результат менеджеру
 	resMsg := models.ResultMessage{
 		Hash:          msg.Hash,
 		SubTaskNumber: msg.SubTaskNumber,
@@ -59,21 +64,25 @@ func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 	}
 	data, err := json.Marshal(resMsg)
 	if err != nil {
-		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, fmt.Sprintf("Ошибка маршалинга результата: %v", err))
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount,
+			fmt.Sprintf("Ошибка маршалинга результата: %v", err))
 		return
 	}
-	if err = ch.Publish(
-		"",        // exchange по умолчанию
-		"results", // routing key
+
+	err = ch.Publish(
+		"",
+		"results",
 		false,
 		false,
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        data,
 		},
-	); err != nil {
-		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, fmt.Sprintf("Ошибка публикации результата: %v", err))
+	)
+	if err != nil {
+		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount,
+			fmt.Sprintf("Ошибка публикации результата: %v", err))
 		return
 	}
-	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Результат опубликован")
+	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Результат отправлен в очередь 'results'")
 }
