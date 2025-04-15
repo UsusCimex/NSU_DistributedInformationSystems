@@ -5,13 +5,31 @@ import (
 	"time"
 
 	"common/logger"
-
 	"github.com/streadway/amqp"
 )
 
-const DefaultMaxRetries = 5
+const (
+	DefaultMaxRetries = 5
+)
 
-// CreateChannel создает канал и объявляет очередь.
+// ConnectRabbitMQ пытается установить соединение с RabbitMQ с заданным числом повторов.
+func ConnectRabbitMQ(uri string) (*amqp.Connection, error) {
+	const maxRetries = 10
+	var conn *amqp.Connection
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		conn, err = amqp.Dial(uri)
+		if err == nil {
+			logger.Log("RabbitMQ", "Подключение к RabbitMQ установлено")
+			return conn, nil
+		}
+		logger.Log("RabbitMQ", fmt.Sprintf("Ошибка подключения (попытка %d/%d): %v", i+1, maxRetries, err))
+		time.Sleep(5 * time.Second)
+	}
+	return nil, err
+}
+
+// CreateChannel создает канал и объявляет очередь с указанным QoS.
 // При ошибке повторяет попытки до достижения лимита.
 func CreateChannel(conn *amqp.Connection, queueName string, qos int) (*amqp.Channel, error) {
 	attempts := 0
@@ -52,6 +70,7 @@ func CreateChannel(conn *amqp.Connection, queueName string, qos int) (*amqp.Chan
 }
 
 // Reconnect пытается восстановить соединение и создать новый канал с очередью.
+// Если соединение закрыто, оно восстанавливается.
 func Reconnect(conn **amqp.Connection, dialURL, queueName string, qos, maxRetries int) (*amqp.Channel, error) {
 	if (*conn).IsClosed() {
 		var newConn *amqp.Connection

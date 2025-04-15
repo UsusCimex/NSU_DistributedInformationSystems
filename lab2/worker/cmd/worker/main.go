@@ -1,34 +1,44 @@
 package main
 
 import (
-	"sync"
+	"log"
+	"os"
 	"time"
 
+	"common/amqputil"
 	"common/logger"
-	"log"
-	"worker/internal/connection"
-	"worker/internal/processor"
-	"worker/internal/rabbitmq"
+	"worker/internal/consumer"
 )
 
 func main() {
-	logger.Log("Worker", "Запуск...")
-	conn, rabbitURI, err := connection.ConnectRabbitMQ()
-	if err != nil {
-		logger.Log("Worker", "Не удалось подключиться к RabbitMQ: "+err.Error())
-		log.Fatal(err)
-	}
-	defer conn.Close()
+	logger.Log("Worker", "Запуск компонента Worker...")
 
-	proc := processor.NewProcessor(nil)
+	rabbitURI := os.Getenv("RABBITMQ_URI")
+	if rabbitURI == "" {
+		rabbitURI = "amqp://guest:guest@rabbitmq:5672/"
+	}
+	conn, err := amqputil.ConnectRabbitMQ(rabbitURI)
+	if err != nil {
+		log.Fatalf("Не удалось подключиться к RabbitMQ: %v", err)
+	}
 
 	for {
-		var wg sync.WaitGroup
-		sem := make(chan struct{}, 3)
-		logger.Log("Worker", "Запуск потребителя...")
-		rabbitmq.ConsumeTasks(&conn, rabbitURI, proc, sem, &wg)
-		wg.Wait()
-		logger.Log("Worker", "Consumer завершил работу, перезапуск через 5 секунд")
+		// Передаём указатель на переменную соединения, чтобы его можно было обновить при реконнекте
+		err = consumer.Consume(&conn, rabbitURI)
+
+		if err != nil {
+			logger.Log("Worker", "Ошибка работы consumer: "+err.Error())
+			// Если текущее соединение закрыто, пробуем восстановить его
+			if conn.IsClosed() {
+				newConn, err := amqputil.ConnectRabbitMQ(rabbitURI)
+				if err != nil {
+					logger.Log("Worker", "Не удалось восстановить соединение: "+err.Error())
+				} else {
+					conn = newConn
+				}
+			}
+		}
+		logger.Log("Worker", "Перезапуск consumer через 5 секунд...")
 		time.Sleep(5 * time.Second)
 	}
 }

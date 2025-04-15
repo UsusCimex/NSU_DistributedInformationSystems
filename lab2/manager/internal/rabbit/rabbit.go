@@ -148,10 +148,16 @@ func processResults(msgs <-chan amqp.Delivery, coll *mongo.Collection, conn **am
 			m.Ack(false)
 			continue
 		}
-		logger.LogHash("Consumer", res.Hash, fmt.Sprintf("Получен результат: %s", res.Result))
-		err := processor.ProcessResult(res, coll)
+		var task models.HashTask
+		if err := coll.FindOne(context.Background(), bson.M{"hash": res.Hash}).Decode(&task); err != nil {
+			logger.LogHash("Consumer", res.Hash, "Задача не найдена")
+			m.Ack(false)
+			continue
+		}
+		logger.LogTask("Consumer", res.Hash, res.SubTaskNumber, task.SubTaskCount, fmt.Sprintf("Получен результат: %s", res.Result))
+		err := processor.ProcessResult(res, task, coll)
 		if err != nil {
-			logger.LogHash("Consumer", res.Hash, fmt.Sprintf("Ошибка обработки результата: %v", err))
+			logger.LogTask("Consumer", res.Hash, res.SubTaskNumber, task.SubTaskCount, fmt.Sprintf("Ошибка обработки результата: %v", err))
 		}
 		m.Ack(false)
 	}

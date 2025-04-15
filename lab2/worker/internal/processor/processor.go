@@ -16,16 +16,6 @@ import (
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// Processor выполняет обработку подзадачи.
-type Processor struct {
-	RmqChannel *amqp.Channel
-}
-
-// NewProcessor создает новый Processor.
-func NewProcessor(ch *amqp.Channel) *Processor {
-	return &Processor{RmqChannel: ch}
-}
-
 // NumberToCandidate преобразует число в строку-кандидат заданной длины.
 func NumberToCandidate(n, length int) string {
 	base := len(alphabet)
@@ -34,6 +24,7 @@ func NumberToCandidate(n, length int) string {
 		candidate.WriteByte(alphabet[n%base])
 		n /= base
 	}
+	// Реверс строки для получения корректного кандидата
 	runes := []rune(candidate.String())
 	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
 		runes[i], runes[j] = runes[j], runes[i]
@@ -41,24 +32,26 @@ func NumberToCandidate(n, length int) string {
 	return string(runes)
 }
 
-// ProcessTask перебирает кандидатов для подзадачи и публикует результат.
-func (p *Processor) ProcessTask(msg models.TaskMessage) {
+// ProcessTask перебирает кандидатов для подзадачи, ищет совпадение по MD5 и публикует результат.
+func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Начало обработки задачи")
 	found := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
 		candidate := NumberToCandidate(i, msg.MaxLength)
-		hash := md5.Sum([]byte(candidate))
-		if hex.EncodeToString(hash[:]) == msg.Hash {
+		sum := md5.Sum([]byte(candidate))
+		if hex.EncodeToString(sum[:]) == msg.Hash {
 			found = candidate
 			break
 		}
 	}
+
 	if found != "" {
 		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Найден кандидат: "+found)
 	} else {
 		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Кандидат не найден")
 	}
+
 	resMsg := models.ResultMessage{
 		Hash:          msg.Hash,
 		SubTaskNumber: msg.SubTaskNumber,
@@ -69,9 +62,9 @@ func (p *Processor) ProcessTask(msg models.TaskMessage) {
 		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, fmt.Sprintf("Ошибка маршалинга результата: %v", err))
 		return
 	}
-	if err = p.RmqChannel.Publish(
-		"",
-		"results",
+	if err = ch.Publish(
+		"",        // exchange по умолчанию
+		"results", // routing key
 		false,
 		false,
 		amqp.Publishing{
