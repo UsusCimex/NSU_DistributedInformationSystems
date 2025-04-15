@@ -33,6 +33,6 @@ func createIndex(ctx context.Context, db *mongo.Database, collName, field string
 		Options: options.Index().SetBackground(true),
 	}
 	if _, err := db.Collection(collName).Indexes().CreateOne(ctx, index); err != nil {
-		log.Printf("[MongoDB]: Ошибка создания индекса по полю %s: %v", field, err)
+		log.Printf("[MongoDB] Error creating index on field %s: %v", field, err)
 	}
 }

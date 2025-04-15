@@ -1,4 +1,4 @@
-package api
+package server
 
 import (
 	"context"
@@ -6,39 +6,49 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
-	"manager/internal/models"
+	"common/models"
 )
 
-// APIHandler инкапсулирует зависимости HTTP-обработчиков.
-type APIHandler struct {
-	coll *mongo.Collection
+// Определения типов для API.
+type CrackRequest struct {
+	Hash      string `json:"hash"`
+	MaxLength int    `json:"maxLength"`
 }
 
-func NewAPIHandler(coll *mongo.Collection) *APIHandler {
-	return &APIHandler{coll: coll}
+type CrackResponse struct {
+	RequestId string `json:"requestId"`
 }
 
-// RegisterHandlers регистрирует обработчики API.
+type StatusResponse struct {
+	Status string      `json:"status"`
+	Data   interface{} `json:"data"`
+}
+
+// RegisterHandlers регистрирует API-эндпоинты.
 func RegisterHandlers(mux *http.ServeMux, coll *mongo.Collection) {
-	h := NewAPIHandler(coll)
-	mux.HandleFunc("/api/hash/crack", h.handleCrack)
-	mux.HandleFunc("/api/hash/status", h.handleStatus)
+	mux.HandleFunc("/api/hash/crack", func(w http.ResponseWriter, r *http.Request) {
+		handleCrack(w, r, coll)
+	})
+	mux.HandleFunc("/api/hash/status", func(w http.ResponseWriter, r *http.Request) {
+		handleStatus(w, r, coll)
+	})
 }
 
-func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
+func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection) {
 	var req CrackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("[API]: Ошибка декодирования запроса: %v", err)
+		log.Printf("[API] Error decoding request: %v", err)
 		http.Error(w, "Неверный запрос", http.StatusBadRequest)
 		return
 	}
-	if (req.MaxLength < 1) || (req.MaxLength > 7) {
+	if req.MaxLength < 1 || req.MaxLength > 7 {
 		http.Error(w, "Max length between 1 and 7", http.StatusBadRequest)
 		return
 	}
@@ -46,7 +56,7 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var existing models.HashTask
-	if err := h.coll.FindOne(ctx, bson.M{"hash": req.Hash}).Decode(&existing); err == nil {
+	if err := coll.FindOne(ctx, bson.M{"hash": req.Hash}).Decode(&existing); err == nil {
 		json.NewEncoder(w).Encode(CrackResponse{RequestId: existing.RequestId})
 		return
 	}
@@ -54,7 +64,7 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 	requestId := uuid.New().String()
 	now := time.Now()
 
-	const alphabetSize = 36 // a-z и 0-9
+	const alphabetSize = 36
 	totalCandidates := math.Pow(float64(alphabetSize), float64(req.MaxLength))
 	const maxCandidatesPerSubTask = 25_000_000.0
 	numSubTasks := int(math.Ceil(totalCandidates / maxCandidatesPerSubTask))
@@ -84,18 +94,18 @@ func (h *APIHandler) handleCrack(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:          now,
 	}
 
-	if _, err := h.coll.InsertOne(ctx, hashTask); err != nil {
-		log.Printf("[API] %s: Ошибка сохранения задачи: %v", req.Hash, err)
+	if _, err := coll.InsertOne(ctx, hashTask); err != nil {
+		log.Printf("[API] Error inserting task for hash %s: %v", req.Hash, err)
 		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[API] %s: Создана новая задача: %s, число подзадач: %d", req.Hash, requestId, numSubTasks)
+	log.Printf("[API] Created new task for hash %s: %s with %d subtasks", req.Hash, requestId, numSubTasks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CrackResponse{RequestId: requestId})
 }
 
-func (h *APIHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
+func handleStatus(w http.ResponseWriter, r *http.Request, coll *mongo.Collection) {
 	requestId := r.URL.Query().Get("requestId")
 	if requestId == "" {
 		http.Error(w, "requestId обязателен", http.StatusBadRequest)
@@ -105,8 +115,8 @@ func (h *APIHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var task models.HashTask
-	if err := h.coll.FindOne(ctx, bson.M{"requestId": requestId}).Decode(&task); err != nil {
-		log.Printf("[API]: Задача с requestId %s не найдена", requestId)
+	if err := coll.FindOne(ctx, bson.M{"requestId": requestId}).Decode(&task); err != nil {
+		log.Printf("[API] Task with requestId %s not found", requestId)
 		http.Error(w, "Задача не найдена", http.StatusNotFound)
 		return
 	}
@@ -127,17 +137,16 @@ func (h *APIHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// Определения типов запросов/ответов.
-type CrackRequest struct {
-	Hash      string `json:"hash"`
-	MaxLength int    `json:"maxLength"`
-}
-
-type CrackResponse struct {
-	RequestId string `json:"requestId"`
-}
-
-type StatusResponse struct {
-	Status string      `json:"status"`
-	Data   interface{} `json:"data"`
+// StartHTTPServer запускает HTTP-сервер с зарегистрированными API-эндпоинтами.
+func StartHTTPServer(coll *mongo.Collection) {
+	mux := http.NewServeMux()
+	RegisterHandlers(mux, coll)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("[HTTP] Server running on port %s", port)
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		log.Fatalf("[HTTP] Server error: %v", err)
+	}
 }

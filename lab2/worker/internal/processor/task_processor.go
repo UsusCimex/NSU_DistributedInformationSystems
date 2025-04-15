@@ -8,24 +8,24 @@ import (
 	"math"
 	"strings"
 
-	"worker/internal/models"
+	"common/models"
 
 	"github.com/streadway/amqp"
 )
 
 const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// Processor выполняет обработку задач.
+// Processor выполняет обработку подзадачи.
 type Processor struct {
 	RmqChannel *amqp.Channel
 }
 
+// NewProcessor создаёт новый процессор.
 func NewProcessor(ch *amqp.Channel) *Processor {
-	return &Processor{
-		RmqChannel: ch,
-	}
+	return &Processor{RmqChannel: ch}
 }
 
+// NumberToCandidate преобразует число в строку-кандидат заданной длины.
 func NumberToCandidate(n, length int) string {
 	base := len(alphabet)
 	var candidate strings.Builder
@@ -41,13 +41,12 @@ func NumberToCandidate(n, length int) string {
 	return string(runes)
 }
 
+// ProcessTask перебирает кандидатов для подзадачи и публикует результат в очередь "results".
+// Если публикация завершается ошибкой, она логируется (реконнект здесь не реализован, так как основной механизм реконнекта осуществляется на уровне consumer).
 func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
-	log.Printf("[Processor] %s(%d/%d): начало обработки задачи",
-		msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
-
+	log.Printf("[Processor] Processing task for hash %s, subtask %d/%d", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
 	found := ""
 	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
-
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
 		candidate := NumberToCandidate(i, msg.MaxLength)
 		hash := md5.Sum([]byte(candidate))
@@ -56,38 +55,36 @@ func (p *Processor) ProcessTask(d amqp.Delivery, msg models.TaskMessage) {
 			break
 		}
 	}
-
 	if found != "" {
-		log.Printf("[Processor] %s(%d/%d): кандидат найден: %s",
-			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, found)
+		log.Printf("[Processor] Found candidate for hash %s: %s", msg.Hash, found)
 	} else {
-		log.Printf("[Processor] %s(%d/%d): кандидат не найден",
-			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
+		log.Printf("[Processor] No candidate found for hash %s", msg.Hash)
 	}
-
 	resMsg := models.ResultMessage{
 		Hash:          msg.Hash,
 		SubTaskNumber: msg.SubTaskNumber,
 		Result:        found,
 	}
-
 	data, err := json.Marshal(resMsg)
 	if err != nil {
-		log.Printf("[Processor] %s(%d/%d): ошибка маршалинга результата: %v",
-			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, err)
+		log.Printf("[Processor] Error marshalling result: %v", err)
 		return
 	}
-
-	if err = p.RmqChannel.Publish("", "results", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        data,
-	}); err != nil {
-		log.Printf("[Processor] %s(%d/%d): ошибка публикации результата: %v",
-			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, err)
-	} else {
-		log.Printf("[Processor] %s(%d/%d): отправлено сообщение результата",
-			msg.Hash, msg.SubTaskNumber, msg.SubTaskCount)
+	if err = p.RmqChannel.Publish(
+		"",
+		"results",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        data,
+		},
+	); err != nil {
+		log.Printf("[Processor] Error publishing result: %v", err)
+		// При необходимости можно добавить реконнект канала,
+		// но основной механизм реконнекта реализован на уровне consumer.
+		return
 	}
-
+	log.Printf("[Processor] Result published for hash %s", msg.Hash)
 	d.Ack(false)
 }

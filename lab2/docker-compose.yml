@@ -89,7 +89,9 @@ services:
       start_period: 40s
 
   manager:
-    build: ./manager
+    build:
+      context: .
+      dockerfile: manager/Dockerfile
     container_name: manager
     depends_on:
       mongodb1:
@@ -105,7 +107,9 @@ services:
       - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672
 
   worker:
-    build: ./worker
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
     depends_on:
       rabbitmq:
         condition: service_healthy

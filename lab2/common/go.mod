@@ -1,10 +1,8 @@
-module manager
+module common
 
-go 1.21
+go 1.20
 
 require (
-	common v0.0.0
-	github.com/google/uuid v1.3.0
 	github.com/streadway/amqp v1.1.0
 	go.mongodb.org/mongo-driver v1.17.3
 )
@@ -21,5 +19,3 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
 )
-
-replace common => ../common

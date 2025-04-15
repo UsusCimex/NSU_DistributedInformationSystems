@@ -1,6 +1,11 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+)
 
 // HashTask – основная задача для взлома хэша.
 type HashTask struct {
@@ -15,18 +20,16 @@ type HashTask struct {
 	CreatedAt          time.Time `bson:"createdAt"`
 }
 
-// SubTask описывает подзадачу; идентифицируется по hash и subTaskNumber.
+// SubTask описывает отдельную подзадачу.
 type SubTask struct {
 	Hash          string    `bson:"hash"`
+	SubTaskNumber int       `bson:"subTaskNumber"`
 	Status        string    `bson:"status"` // RECEIVED, PUBLISHED, WORKING, COMPLETE
-	WorkerId      string    `bson:"workerId,omitempty"`
-	Heartbeat     time.Time `bson:"heartbeat,omitempty"`
 	CreatedAt     time.Time `bson:"createdAt"`
 	UpdatedAt     time.Time `bson:"updatedAt"`
-	SubTaskNumber int       `bson:"subTaskNumber"`
 }
 
-// TaskMessage описывает сообщение для публикации задачи в RabbitMQ.
+// TaskMessage – сообщение для публикации задачи в RabbitMQ.
 type TaskMessage struct {
 	Hash          string `json:"hash"`
 	MaxLength     int    `json:"maxLength"`
@@ -34,10 +37,21 @@ type TaskMessage struct {
 	SubTaskCount  int    `json:"subTaskCount"`
 }
 
-// ResultMessage описывает сообщение результата, полученное от Worker-а.
+// ResultMessage – сообщение результата, отправляемое от Worker-а.
 type ResultMessage struct {
 	Hash          string `json:"hash"`
 	SubTaskNumber int    `json:"subTaskNumber"`
-	WorkerId      string `json:"workerId"`
 	Result        string `json:"result"`
+}
+
+func BsonFilterReceived() bson.M {
+	return bson.M{"subTasks.status": "RECEIVED"}
+}
+
+func MarshalTaskMessage(msg TaskMessage) ([]byte, error) {
+	return json.Marshal(msg)
+}
+
+func UnmarshalResultMessage(data []byte, res *ResultMessage) error {
+	return json.Unmarshal(data, res)
 }

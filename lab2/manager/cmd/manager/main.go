@@ -1,119 +1,41 @@
 package main
 
 import (
-	"context"
 	"log"
-	"net/http"
-	"os"
 	"sync"
-	"time"
 
-	"github.com/streadway/amqp"
-
-	"manager/internal/api"
-	"manager/internal/mongodb"
-	"manager/internal/publisher"
-	"manager/internal/receiver"
-
-	"go.mongodb.org/mongo-driver/mongo"
+	"manager/internal/connection"
+	"manager/internal/rabbit"
+	"manager/internal/server"
 )
 
-// ManagerApp инкапсулирует все основные зависимости сервиса.
-type ManagerApp struct {
-	MongoClient *mongo.Client
-	DB          *mongo.Database
-	RMQConn     *amqp.Connection
-	RMQChannel  *amqp.Channel
-	Publisher   *publisher.Publisher
-}
-
 func main() {
-	app, err := initializeManagerApp()
+	// Подключаемся к MongoDB.
+	mongoClient, db, err := connection.ConnectMongoDB()
 	if err != nil {
-		log.Fatalf("[Manager]: Ошибка инициализации: %v", err)
+		log.Fatalf("[Main] Failed to connect to MongoDB: %v", err)
 	}
-	defer app.MongoClient.Disconnect(context.Background())
-	defer app.RMQConn.Close()
+	defer mongoClient.Disconnect(nil)
+	taskColl := db.Collection("hash_tasks")
 
-	// Запуск consumer-а для результатов.
-	receiver.StartResultConsumer(app.RMQChannel, app.DB.Collection("hash_tasks"))
+	// Подключаемся к RabbitMQ.
+	rabbitConn, rabbitCh, rabbitURI, err := connection.ConnectRabbitMQ()
+	if err != nil {
+		log.Fatalf("[Main] Failed to connect to RabbitMQ: %v", err)
+	}
+	defer rabbitConn.Close()
 
-	// Запуск публикации подзадач.
-	go app.Publisher.Start()
+	log.Println("[Main] All connections established")
 
-	// Запуск HTTP сервера.
-	startHTTPServer(app.DB.Collection("hash_tasks"))
+	// Запуск consumer-а для очереди "results" с реконнектом.
+	go rabbit.StartResultConsumer(rabbitCh, taskColl, &rabbitConn, rabbitURI)
+	// Запуск publisher-а, публикующего подзадачи с реконнектом.
+	go rabbit.StartPublisher(taskColl, &rabbitConn, rabbitURI, rabbitCh)
+	// Запуск HTTP-сервера.
+	go server.StartHTTPServer(taskColl)
 
-	// Можно использовать синхронизацию/обработку сигналов для graceful shutdown.
+	log.Println("[Main] Manager service is running...")
 	var wg sync.WaitGroup
 	wg.Add(1)
 	wg.Wait()
-}
-
-func initializeManagerApp() (*ManagerApp, error) {
-	// Получаем строку подключения из переменной окружения.
-	mongodbURI := os.Getenv("MONGODB_URI")
-	if mongodbURI == "" {
-		mongodbURI = "mongodb://localhost:27017"
-	}
-
-	// Подключение к MongoDB
-	client, db, err := mongodb.ConnectMongo(mongodbURI, "hash_cracker")
-	if err != nil {
-		return nil, err
-	}
-	log.Println("[Manager]: Подключение к MongoDB успешно")
-
-	// Подключение к RabbitMQ
-	rabbitmqURL := os.Getenv("RABBITMQ_URI")
-	if rabbitmqURL == "" {
-		rabbitmqURL = "amqp://guest:guest@rabbitmq:5672/"
-	}
-
-	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
-	if err != nil {
-		return nil, err
-	}
-	channel, err := conn.Channel()
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	// Объявление очереди "tasks".
-	_, err = channel.QueueDeclare("tasks", true, false, false, false, nil)
-	if err != nil {
-		channel.Close()
-		conn.Close()
-		return nil, err
-	}
-	log.Println("[Manager]: Подключение к RabbitMQ успешно")
-
-	pub := publisher.NewPublisher(db.Collection("hash_tasks"), conn, channel, rabbitmqURL)
-
-	return &ManagerApp{
-		MongoClient: client,
-		DB:          db,
-		RMQConn:     conn,
-		RMQChannel:  channel,
-		Publisher:   pub,
-	}, nil
-}
-
-func startHTTPServer(coll *mongo.Collection) {
-	mux := http.NewServeMux()
-	api.RegisterHandlers(mux, coll)
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
-	log.Printf("[Manager]: Сервис Manager запущен на порту %s", port)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("[Manager]: Ошибка HTTP-сервера: %v", err)
-	}
 }
