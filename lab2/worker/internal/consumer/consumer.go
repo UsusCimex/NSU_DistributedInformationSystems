@@ -57,7 +57,7 @@ func Consume(connPtr **amqp.Connection, rabbitURI string) error {
 			var taskMsg models.TaskMessage
 			if err := json.Unmarshal(delivery.Body, &taskMsg); err != nil {
 				logger.Log("Worker Consumer", "Ошибка декодирования сообщения: "+err.Error())
-				delivery.Nack(false, false)
+				delivery.Ack(false)
 				return
 			}
 			processor.ProcessTask(ch, taskMsg)
