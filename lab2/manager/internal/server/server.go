@@ -77,18 +77,15 @@ func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection)
 		return
 	}
 
-	// Создаем новую задачу взлома
 	requestId := uuid.New().String()
 	now := time.Now()
 
-	// Определяем количество подзадач на основе размера пространства поиска
 	totalCandidates := math.Pow(float64(constants.AlphabetSize), float64(req.MaxLength))
 	numSubTasks := int(math.Ceil(totalCandidates / constants.MaxCandidatesPerSubTask))
 	if numSubTasks < 1 {
 		numSubTasks = 1
 	}
 
-	// Инициализируем массив подзадач
 	subTasks := make([]models.SubTask, numSubTasks)
 	for i := 0; i < numSubTasks; i++ {
 		subTasks[i] = models.SubTask{
@@ -100,7 +97,6 @@ func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection)
 		}
 	}
 
-	// Создаем документ HashTask
 	taskDoc := models.HashTask{
 		RequestId:          requestId,
 		Hash:               req.Hash,
@@ -144,21 +140,16 @@ func handleStatus(w http.ResponseWriter, r *http.Request, coll *mongo.Collection
 		return
 	}
 
-	// Формируем ответ на основе статуса задачи
 	var resp StatusResponse
 	switch task.Status {
 	case "IN_PROGRESS":
-		// Вычисляем процент выполнения
 		percent := float64(task.CompletedTaskCount) / float64(task.SubTaskCount) * 100.0
 		resp = StatusResponse{Status: "IN_PROGRESS", Data: percent}
 	case "DONE":
-		// Задача выполнена и результат найден
 		resp = StatusResponse{Status: "DONE", Data: task.Result}
 	case "FAIL":
-		// Задача выполнена, но результат не найден
 		resp = StatusResponse{Status: "FAIL", Data: "Хэш не был расшифрован"}
 	default:
-		// Неожиданный статус
 		resp = StatusResponse{Status: "IN_PROGRESS", Data: 0.0}
 	}
 

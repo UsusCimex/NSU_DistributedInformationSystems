@@ -37,16 +37,15 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 				continue
 			}
 			taskUpdated := false
-			// Перебираем подзадачи этой задачи
 			for i := range task.SubTasks {
 				subTask := &task.SubTasks[i]
 				if subTask.Status != "RECEIVED" {
-					continue // публикуем только подзадачи, ожидающие публикации
+					continue
 				}
 				if publishedCount >= publishLimit {
-					break // достигли лимита публикации для этого цикла
+					break
 				}
-				// Создаем сообщение для этой подзадачи
+
 				msg := models.TaskMessage{
 					Hash:          subTask.Hash,
 					MaxLength:     task.MaxLength,
@@ -59,7 +58,7 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 						fmt.Sprintf("Ошибка маршалинга: %v", err))
 					continue
 				}
-				// Публикуем сообщение в очередь "tasks"
+
 				err = ch.Publish(
 					"",
 					constants.TasksQueue,
@@ -72,7 +71,6 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 					},
 				)
 				if err != nil {
-					// Логируем ошибку и пытаемся переподключиться к RabbitMQ (получить новый канал)
 					logger.LogTask("Publisher", subTask.Hash, subTask.SubTaskNumber, task.SubTaskCount,
 						fmt.Sprintf("Ошибка публикации: %v", err))
 					newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, constants.TasksQueue, 0, constants.DefaultChannelRetries)
@@ -83,14 +81,12 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 					}
 					break
 				}
-				// Отмечаем подзадачу как опубликованную
 				subTask.Status = "PUBLISHED"
 				subTask.UpdatedAt = time.Now()
 				publishedCount++
 				taskUpdated = true
 			}
 			if taskUpdated {
-				// Сохраняем обновленные статусы подзадач в базе данных
 				_, err := coll.UpdateOne(ctx,
 					bson.M{"requestId": task.RequestId},
 					bson.M{"$set": bson.M{"subTasks": task.SubTasks}},
@@ -119,7 +115,6 @@ func StartResultConsumer(ch *amqp.Channel, coll *mongo.Collection, connPtr **amq
 		_, err := ch.QueueDeclare(constants.ResultsQueue, true, false, false, false, nil)
 		if err != nil {
 			logger.Log("Consumer", fmt.Sprintf("Ошибка объявления очереди 'results': %v", err))
-			// Пытаемся переподключиться если объявление очереди не удалось
 			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, constants.ResultsQueue, 0, 5)
 			if recErr != nil {
 				logger.Log("Consumer", fmt.Sprintf("Не удалось восстановить подключение RabbitMQ: %v", recErr))
@@ -129,11 +124,10 @@ func StartResultConsumer(ch *amqp.Channel, coll *mongo.Collection, connPtr **amq
 			ch = newCh
 			continue
 		}
-		// Регистрируем потребителя для очереди "results"
+
 		msgs, err := ch.Consume(constants.ResultsQueue, "", false, false, false, false, nil)
 		if err != nil {
 			logger.Log("Consumer", fmt.Sprintf("Ошибка регистрации consumer на очереди 'results': %v", err))
-			// Пытаемся переподключиться если потребление не удалось
 			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, constants.ResultsQueue, 0, 5)
 			if recErr != nil {
 				logger.Log("Consumer", fmt.Sprintf("Не удалось восстановить подключение RabbitMQ: %v", recErr))
@@ -144,7 +138,6 @@ func StartResultConsumer(ch *amqp.Channel, coll *mongo.Collection, connPtr **amq
 			continue
 		}
 		logger.Log("Consumer", "Consumer для очереди 'results' запущен")
-		// Обрабатываем сообщения из очереди "results"
 		processResults(msgs, coll)
 		logger.Log("Consumer", "Обработка результатов завершена, перезапуск consumer...")
 	}
@@ -153,14 +146,13 @@ func StartResultConsumer(ch *amqp.Channel, coll *mongo.Collection, connPtr **amq
 // processResults читает сообщения из канала results и обновляет задачи в базе данных для каждого результата.
 func processResults(msgs <-chan amqp.Delivery, coll *mongo.Collection) {
 	for msg := range msgs {
-		// Разбираем сообщение с результатом
 		var res models.ResultMessage
 		if err := json.Unmarshal(msg.Body, &res); err != nil {
 			logger.Log("Consumer", fmt.Sprintf("Ошибка декодирования результата: %v", err))
 			msg.Ack(false) // подтверждаем плохое сообщение для удаления из очереди
 			continue
 		}
-		// Находим соответствующую задачу в базе данных по хешу
+
 		var task models.HashTask
 		err := coll.FindOne(context.Background(), bson.M{"hash": res.Hash}).Decode(&task)
 		if err != nil {
@@ -168,13 +160,13 @@ func processResults(msgs <-chan amqp.Delivery, coll *mongo.Collection) {
 			msg.Ack(false)
 			continue
 		}
-		// Логируем полученный результат
+
 		logger.LogTask("Consumer", res.Hash, res.SubTaskNumber, task.SubTaskCount, fmt.Sprintf("Получен результат: %s", res.Result))
-		// Обрабатываем результат: обновляем статус подзадачи, статус задачи и т.д.
+
 		if err := processor.ProcessResult(res, task, coll); err != nil {
 			logger.LogTask("Consumer", res.Hash, res.SubTaskNumber, task.SubTaskCount, fmt.Sprintf("Ошибка обновления задачи: %v", err))
 		}
-		msg.Ack(false) // подтверждаем обработку сообщения
+		msg.Ack(false)
 	}
 	logger.Log("Consumer", "Канал результатов закрыт")
 }

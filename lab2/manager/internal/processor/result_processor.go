@@ -35,25 +35,20 @@ func ProcessResult(res models.ResultMessage, task models.HashTask, coll *mongo.C
 		return errors.New("subtask not found")
 	}
 
-	// Увеличиваем счетчик завершенных подзадач
 	task.CompletedTaskCount++
 	if task.CompletedTaskCount == task.SubTaskCount {
 		logger.LogHash("Processor", task.Hash, "Все подзадачи завершены")
 	}
 
-	// Обновляем общий статус задачи на основе найденного результата
 	if res.Result != "" {
-		// Пароль был найден в этой подзадаче
 		task.Status = "DONE"
 		task.Result = res.Result
 		logger.LogHash("Processor", res.Hash, fmt.Sprintf("Хэш успешно расшифрован: %s", res.Result))
 	} else if task.CompletedTaskCount >= task.SubTaskCount && task.Result == "" {
-		// Все подзадачи завершены и результат не найден
 		task.Status = "FAIL"
 		logger.LogHash("Processor", res.Hash, "Хэш не расшифрован (задача отмечена как FAIL)")
 	}
 
-	// Обновляем документ задачи в базе данных
 	update := bson.M{
 		"$set": bson.M{
 			"subTasks":           task.SubTasks,

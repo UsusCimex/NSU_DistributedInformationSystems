@@ -27,7 +27,6 @@ func ConnectMongoDB() (*mongo.Client, *mongo.Database, error) {
 }
 
 // ConnectRabbitMQ устанавливает соединение с RabbitMQ и открывает канал для очереди "tasks".
-// Возвращает соединение, канал и URI, который был использован.
 func ConnectRabbitMQ() (*amqp.Connection, *amqp.Channel, string, error) {
 	rabbitURI := os.Getenv("RABBITMQ_URI")
 	if rabbitURI == "" {

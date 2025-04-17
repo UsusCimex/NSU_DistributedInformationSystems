@@ -14,13 +14,10 @@ import (
 func main() {
 	logger.Log("Worker", "Запуск Worker...")
 
-	// Определяем URI RabbitMQ из переменных окружения или используем стандартное значение
 	rabbitURI := os.Getenv("RABBITMQ_URI")
 	if rabbitURI == "" {
 		rabbitURI = constants.DefaultRabbitURI
 	}
-
-	// Подключаемся к RabbitMQ
 	conn, err := amqputil.ConnectRabbitMQ(rabbitURI)
 	if err != nil {
 		log.Fatalf("Не удалось подключиться к RabbitMQ: %v", err)

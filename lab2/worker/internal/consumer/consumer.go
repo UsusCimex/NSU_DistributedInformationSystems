@@ -14,9 +14,7 @@ import (
 )
 
 // Consume подключается к очереди "tasks", потребляет сообщения и обрабатывает их.
-// Возвращает ошибку при закрытии канала или соединения для обработки переподключения.
 func Consume(connPtr **amqp.Connection, rabbitURI string) error {
-	// Создаем канал для очереди "tasks" с предварительной выборкой 3 сообщений за раз
 	ch, err := amqputil.CreateChannel(*connPtr, constants.TasksQueue, constants.DefaultPrefetchCount)
 	if err != nil {
 		if *connPtr != nil && (*connPtr).IsClosed() {
@@ -33,7 +31,6 @@ func Consume(connPtr **amqp.Connection, rabbitURI string) error {
 	}
 	defer ch.Close()
 
-	// Подписываемся на очередь "tasks"
 	msgs, err := ch.Consume(constants.TasksQueue, "", false, false, false, false, nil)
 	if err != nil {
 		logger.Log("Worker Consumer", "Ошибка регистрации consumer: "+err.Error())
@@ -41,13 +38,10 @@ func Consume(connPtr **amqp.Connection, rabbitURI string) error {
 	}
 	logger.Log("Worker Consumer", "Consumer для очереди 'tasks' зарегистрирован")
 
-	// Используем WaitGroup для синхронизации обработки сообщений
 	var wg sync.WaitGroup
-	// Ограничиваем количество одновременно запущенных горутин
 	maxConcurrent := constants.DefaultMaxConcurrency
 	sem := make(chan struct{}, maxConcurrent)
 
-	// Обработка входящих сообщений
 	for d := range msgs {
 		sem <- struct{}{}
 		wg.Add(1)

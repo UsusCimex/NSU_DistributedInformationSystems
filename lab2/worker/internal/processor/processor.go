@@ -35,7 +35,6 @@ func NumberToCandidate(n int, length int) string {
 func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Начало обработки задачи")
 	found := ""
-	// Вычисляем общее количество кандидатов длиной <= MaxLength
 	totalCandidates := int(math.Pow(float64(constants.AlphabetSize), float64(msg.MaxLength)))
 
 	// Перебираем часть пространства поиска, назначенную этой подзадаче
@@ -54,7 +53,6 @@ func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 		logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Пароль не найден в данной подзадаче")
 	}
 
-	// Отправляем результат менеджеру
 	resMsg := models.ResultMessage{
 		Hash:          msg.Hash,
 		SubTaskNumber: msg.SubTaskNumber,
