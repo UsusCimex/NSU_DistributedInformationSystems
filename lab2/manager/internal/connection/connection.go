@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"common/amqputil"
+	"common/constants"
 	"common/logger"
 	"common/mongodb"
 
@@ -11,20 +12,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// Параметры соединений по умолчанию
-const (
-	defaultMongoURI  = "mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0"
-	defaultRabbitURI = "amqp://guest:guest@rabbitmq:5672/"
-	defaultDBName    = "hash_cracker"
-)
-
 // ConnectMongoDB устанавливает соединение с MongoDB и возвращает клиент и базу данных.
 func ConnectMongoDB() (*mongo.Client, *mongo.Database, error) {
 	mongoURI := os.Getenv("MONGODB_URI")
 	if mongoURI == "" {
-		mongoURI = defaultMongoURI
+		mongoURI = constants.DefaultMongoURI
 	}
-	client, db, err := mongodb.ConnectMongo(mongoURI, defaultDBName)
+	client, db, err := mongodb.ConnectMongo(mongoURI, constants.DefaultDBName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -37,13 +31,13 @@ func ConnectMongoDB() (*mongo.Client, *mongo.Database, error) {
 func ConnectRabbitMQ() (*amqp.Connection, *amqp.Channel, string, error) {
 	rabbitURI := os.Getenv("RABBITMQ_URI")
 	if rabbitURI == "" {
-		rabbitURI = defaultRabbitURI
+		rabbitURI = constants.DefaultRabbitURI
 	}
 	conn, err := amqputil.ConnectRabbitMQ(rabbitURI)
 	if err != nil {
 		return nil, nil, rabbitURI, err
 	}
-	ch, err := amqputil.CreateChannel(conn, "tasks", 0)
+	ch, err := amqputil.CreateChannel(conn, constants.TasksQueue, 0)
 	if err != nil {
 		conn.Close()
 		return nil, nil, rabbitURI, err

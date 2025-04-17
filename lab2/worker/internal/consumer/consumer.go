@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"common/amqputil"
+	"common/constants"
 	"common/logger"
 	"common/models"
 	"worker/internal/processor"
@@ -16,10 +17,10 @@ import (
 // Возвращает ошибку при закрытии канала или соединения для обработки переподключения.
 func Consume(connPtr **amqp.Connection, rabbitURI string) error {
 	// Создаем канал для очереди "tasks" с предварительной выборкой 3 сообщений за раз
-	ch, err := amqputil.CreateChannel(*connPtr, "tasks", 3)
+	ch, err := amqputil.CreateChannel(*connPtr, constants.TasksQueue, constants.DefaultPrefetchCount)
 	if err != nil {
 		if *connPtr != nil && (*connPtr).IsClosed() {
-			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, "tasks", 3, 5)
+			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, constants.TasksQueue, constants.DefaultPrefetchCount, 5)
 			if recErr != nil {
 				logger.Log("Worker Consumer", "Не удалось восстановить канал: "+recErr.Error())
 				return recErr
@@ -33,7 +34,7 @@ func Consume(connPtr **amqp.Connection, rabbitURI string) error {
 	defer ch.Close()
 
 	// Подписываемся на очередь "tasks"
-	msgs, err := ch.Consume("tasks", "", false, false, false, false, nil)
+	msgs, err := ch.Consume(constants.TasksQueue, "", false, false, false, false, nil)
 	if err != nil {
 		logger.Log("Worker Consumer", "Ошибка регистрации consumer: "+err.Error())
 		return err
@@ -43,7 +44,7 @@ func Consume(connPtr **amqp.Connection, rabbitURI string) error {
 	// Используем WaitGroup для синхронизации обработки сообщений
 	var wg sync.WaitGroup
 	// Ограничиваем количество одновременно запущенных горутин
-	maxConcurrent := 3
+	maxConcurrent := constants.DefaultMaxConcurrency
 	sem := make(chan struct{}, maxConcurrent)
 
 	// Обработка входящих сообщений

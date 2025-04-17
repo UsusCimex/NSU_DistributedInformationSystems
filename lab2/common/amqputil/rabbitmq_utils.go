@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"common/constants"
 	"common/logger"
 	"github.com/streadway/amqp"
 )
@@ -14,7 +15,7 @@ const DefaultMaxRetries = 5
 // ConnectRabbitMQ пытается установить соединение с RabbitMQ по указанному URI.
 // Будет повторять попытки соединения до фиксированного количества раз, прежде чем вернуть ошибку.
 func ConnectRabbitMQ(uri string) (*amqp.Connection, error) {
-	const maxRetries = 10
+	const maxRetries = constants.DefaultConnectRetries
 	var conn *amqp.Connection
 	var err error
 	for i := 0; i < maxRetries; i++ {
@@ -24,7 +25,7 @@ func ConnectRabbitMQ(uri string) (*amqp.Connection, error) {
 			return conn, nil
 		}
 		logger.Log("RabbitMQ", fmt.Sprintf("Ошибка подключения (попытка %d/%d): %v", i+1, maxRetries, err))
-		time.Sleep(5 * time.Second)
+		time.Sleep(constants.ContextTimeout)
 	}
 	return nil, err
 }
@@ -34,37 +35,37 @@ func ConnectRabbitMQ(uri string) (*amqp.Connection, error) {
 func CreateChannel(conn *amqp.Connection, queueName string, qos int) (*amqp.Channel, error) {
 	var ch *amqp.Channel
 	var err error
-	for attempt := 1; attempt <= DefaultMaxRetries; attempt++ {
+	for attempt := 1; attempt <= constants.DefaultChannelRetries; attempt++ {
 		// Пробуем открыть канал
 		ch, err = conn.Channel()
 		if err != nil {
-			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка открытия канала: %v. Повтор через 5 секунд... (Попытка %d/%d)", err, attempt, DefaultMaxRetries))
-			if attempt >= DefaultMaxRetries {
+			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка открытия канала: %v. Повтор через 5 секунд... (Попытка %d/%d)", err, attempt, constants.DefaultChannelRetries))
+			if attempt >= constants.DefaultChannelRetries {
 				return nil, err
 			}
-			time.Sleep(5 * time.Second)
+			time.Sleep(constants.ContextTimeout)
 			continue
 		}
 		// Объявляем очередь
 		_, err = ch.QueueDeclare(queueName, true, false, false, false, nil)
 		if err != nil {
-			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка объявления очереди '%s': %v. Повтор через 5 секунд... (Попытка %d/%d)", queueName, err, attempt, DefaultMaxRetries))
+			logger.Log("RabbitMQ", fmt.Sprintf("Ошибка объявления очереди '%s': %v. Повтор через 5 секунд... (Попытка %d/%d)", queueName, err, attempt, constants.DefaultChannelRetries))
 			_ = ch.Close()
-			if attempt >= DefaultMaxRetries {
+			if attempt >= constants.DefaultChannelRetries {
 				return nil, err
 			}
-			time.Sleep(5 * time.Second)
+			time.Sleep(constants.ContextTimeout)
 			continue
 		}
 		// Устанавливаем QoS (prefetch count), если запрошен
 		if qos > 0 {
 			if err = ch.Qos(qos, 0, false); err != nil {
-				logger.Log("RabbitMQ", fmt.Sprintf("Ошибка установки QoS: %v. Повтор через 5 секунд... (Попытка %d/%d)", err, attempt, DefaultMaxRetries))
+				logger.Log("RabbitMQ", fmt.Sprintf("Ошибка установки QoS: %v. Повтор через 5 секунд... (Попытка %d/%d)", err, attempt, constants.DefaultChannelRetries))
 				_ = ch.Close()
-				if attempt >= DefaultMaxRetries {
+				if attempt >= constants.DefaultChannelRetries {
 					return nil, err
 				}
-				time.Sleep(5 * time.Second)
+				time.Sleep(constants.ContextTimeout)
 				continue
 			}
 		}

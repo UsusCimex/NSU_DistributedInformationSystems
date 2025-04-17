@@ -114,6 +114,8 @@ services:
       rabbitmq:
         condition: service_healthy
     restart: on-failure
+    environment:
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672
     deploy:
       replicas: 3
 

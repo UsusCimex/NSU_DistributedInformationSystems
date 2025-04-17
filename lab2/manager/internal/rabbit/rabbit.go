@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"common/amqputil"
+	"common/constants"
 	"common/logger"
 	"common/models"
 	"manager/internal/processor"
@@ -18,9 +19,9 @@ import (
 
 // StartPublisher проверяет базу данных на наличие задач с подзадачами в статусе "RECEIVED" и публикует их в очередь "tasks".
 func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI string, ch *amqp.Channel) {
-	const publishLimit = 100 // максимальное количество подзадач для публикации за один цикл
+	publishLimit := constants.PublishLimit
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.LongContextTimeout)
 		cursor, err := coll.Find(ctx, models.BsonFilterReceived())
 		if err != nil {
 			cancel()
@@ -61,7 +62,7 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 				// Публикуем сообщение в очередь "tasks"
 				err = ch.Publish(
 					"",
-					"tasks",
+					constants.TasksQueue,
 					false,
 					false,
 					amqp.Publishing{
@@ -74,7 +75,7 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 					// Логируем ошибку и пытаемся переподключиться к RabbitMQ (получить новый канал)
 					logger.LogTask("Publisher", subTask.Hash, subTask.SubTaskNumber, task.SubTaskCount,
 						fmt.Sprintf("Ошибка публикации: %v", err))
-					newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, "tasks", 0, amqputil.DefaultMaxRetries)
+					newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, constants.TasksQueue, 0, constants.DefaultChannelRetries)
 					if recErr != nil {
 						logger.Log("Publisher", fmt.Sprintf("Не удалось восстановить соединение RabbitMQ для задачи %s: %v", task.RequestId, recErr))
 					} else {
@@ -107,7 +108,7 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 		if publishedCount > 0 {
 			logger.Log("Publisher", fmt.Sprintf("Опубликовано %d подзадач(и) в очередь", publishedCount))
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(constants.ContextTimeout)
 	}
 }
 
@@ -115,11 +116,11 @@ func StartPublisher(coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI
 func StartResultConsumer(ch *amqp.Channel, coll *mongo.Collection, connPtr **amqp.Connection, rabbitURI string) {
 	for {
 		// Проверяем существование очереди "results"
-		_, err := ch.QueueDeclare("results", true, false, false, false, nil)
+		_, err := ch.QueueDeclare(constants.ResultsQueue, true, false, false, false, nil)
 		if err != nil {
 			logger.Log("Consumer", fmt.Sprintf("Ошибка объявления очереди 'results': %v", err))
 			// Пытаемся переподключиться если объявление очереди не удалось
-			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, "results", 0, 5)
+			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, constants.ResultsQueue, 0, 5)
 			if recErr != nil {
 				logger.Log("Consumer", fmt.Sprintf("Не удалось восстановить подключение RabbitMQ: %v", recErr))
 				time.Sleep(5 * time.Second)
@@ -129,11 +130,11 @@ func StartResultConsumer(ch *amqp.Channel, coll *mongo.Collection, connPtr **amq
 			continue
 		}
 		// Регистрируем потребителя для очереди "results"
-		msgs, err := ch.Consume("results", "", false, false, false, false, nil)
+		msgs, err := ch.Consume(constants.ResultsQueue, "", false, false, false, false, nil)
 		if err != nil {
 			logger.Log("Consumer", fmt.Sprintf("Ошибка регистрации consumer на очереди 'results': %v", err))
 			// Пытаемся переподключиться если потребление не удалось
-			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, "results", 0, 5)
+			newCh, recErr := amqputil.Reconnect(connPtr, rabbitURI, constants.ResultsQueue, 0, 5)
 			if recErr != nil {
 				logger.Log("Consumer", fmt.Sprintf("Не удалось восстановить подключение RabbitMQ: %v", recErr))
 				time.Sleep(5 * time.Second)

@@ -8,21 +8,19 @@ import (
 	"math"
 	"strings"
 
+	"common/constants"
 	"common/logger"
 	"common/models"
 
 	"github.com/streadway/amqp"
 )
 
-const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-
-// NumberToCandidate преобразует число в строку в системе счисления с основанием len(alphabet) заданной длины.
-// Используется для генерации кандидатов паролей определенной длины из индекса.
+// NumberToCandidate преобразует число в строку в системе счисления с основанием constants.AlphabetSize.
 func NumberToCandidate(n int, length int) string {
-	base := len(alphabet)
+	base := constants.AlphabetSize
 	var candidateBuilder strings.Builder
 	for i := 0; i < length; i++ {
-		candidateBuilder.WriteByte(alphabet[n%base])
+		candidateBuilder.WriteByte(constants.Alphabet[n%base])
 		n /= base
 	}
 	// Переворачиваем строку
@@ -38,7 +36,7 @@ func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 	logger.LogTask("Processor", msg.Hash, msg.SubTaskNumber, msg.SubTaskCount, "Начало обработки задачи")
 	found := ""
 	// Вычисляем общее количество кандидатов длиной <= MaxLength
-	totalCandidates := int(math.Pow(float64(len(alphabet)), float64(msg.MaxLength)))
+	totalCandidates := int(math.Pow(float64(constants.AlphabetSize), float64(msg.MaxLength)))
 
 	// Перебираем часть пространства поиска, назначенную этой подзадаче
 	for i := msg.SubTaskNumber - 1; i < totalCandidates; i += msg.SubTaskCount {
@@ -71,7 +69,7 @@ func ProcessTask(ch *amqp.Channel, msg models.TaskMessage) {
 
 	err = ch.Publish(
 		"",
-		"results",
+		constants.ResultsQueue,
 		false,
 		false,
 		amqp.Publishing{

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"common/amqputil"
+	"common/constants"
 	"common/logger"
 	"worker/internal/consumer"
 )
@@ -16,7 +17,7 @@ func main() {
 	// Определяем URI RabbitMQ из переменных окружения или используем стандартное значение
 	rabbitURI := os.Getenv("RABBITMQ_URI")
 	if rabbitURI == "" {
-		rabbitURI = "amqp://guest:guest@rabbitmq:5672/"
+		rabbitURI = constants.DefaultRabbitURI
 	}
 
 	// Подключаемся к RabbitMQ

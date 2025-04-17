@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"common/constants"
 	"common/logger"
 	"common/models"
 
@@ -60,12 +61,12 @@ func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection)
 		http.Error(w, "Bad request: invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if req.MaxLength < 1 || req.MaxLength > 7 {
-		http.Error(w, "MaxLength must be between 1 and 7", http.StatusBadRequest)
+	if req.MaxLength < constants.MinMaxLength || req.MaxLength > constants.MaxMaxLength {
+		http.Error(w, fmt.Sprintf("MaxLength must be between %d and %d", constants.MinMaxLength, constants.MaxMaxLength), http.StatusBadRequest)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.ContextTimeout)
 	defer cancel()
 
 	// Если задача для этого хеша уже существует, возвращаем её requestId
@@ -81,10 +82,8 @@ func handleCrack(w http.ResponseWriter, r *http.Request, coll *mongo.Collection)
 	now := time.Now()
 
 	// Определяем количество подзадач на основе размера пространства поиска
-	const alphabetSize = 36 // 26 букв + 10 цифр
-	totalCandidates := math.Pow(float64(alphabetSize), float64(req.MaxLength))
-	const maxCandidatesPerSubTask = 15_000_000.0
-	numSubTasks := int(math.Ceil(totalCandidates / maxCandidatesPerSubTask))
+	totalCandidates := math.Pow(float64(constants.AlphabetSize), float64(req.MaxLength))
+	numSubTasks := int(math.Ceil(totalCandidates / constants.MaxCandidatesPerSubTask))
 	if numSubTasks < 1 {
 		numSubTasks = 1
 	}
@@ -134,7 +133,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request, coll *mongo.Collection
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.ContextTimeout)
 	defer cancel()
 
 	var task models.HashTask
