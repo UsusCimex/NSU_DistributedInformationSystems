@@ -25,7 +25,7 @@ type HashTask struct {
 type SubTask struct {
 	Hash          string    `bson:"hash"`
 	SubTaskNumber int       `bson:"subTaskNumber"`
-	Status        string    `bson:"status"` // например "RECEIVED", "PUBLISHED", "WORKING", "COMPLETE"
+	Status        string    `bson:"status"` // например "RECEIVED", "PUBLISHED, "COMPLETE"
 	CreatedAt     time.Time `bson:"createdAt"`
 	UpdatedAt     time.Time `bson:"updatedAt"`
 }
